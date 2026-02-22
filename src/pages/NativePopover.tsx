@@ -15,6 +15,12 @@ const NativePopover = () => {
         <p className="text-lg text-muted-foreground max-w-2xl leading-relaxed">
           The Popover API lets you build real popups with just HTML and CSS. Menus, tooltips, side panels — all handled natively by the browser. No scripts required.
         </p>
+        <br />
+        <ul className="list-disc list-inside text-muted-foreground">
+          <li>The browser handles focus.</li>
+          <li>Keyboard support works.</li>
+          <li>Accessibility is built in.</li>
+        </ul>
       </div>
 
       {/* How it works */}

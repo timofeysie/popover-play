@@ -3,6 +3,8 @@ import { Outlet, useNavigate, useLocation } from "react-router-dom";
 
 const exercises = [
   { title: "Native Popover", path: "/", active: true },
+  { title: "Safe Area", path: "/safe-area", active: true },
+  { title: "Isolation Property", path: "/isolation", active: true },
   { title: "Dialog Element", path: "/dialog", active: false },
   { title: "CSS Nesting", path: "/css-nesting", active: false },
   { title: "View Transitions", path: "/view-transitions", active: false },

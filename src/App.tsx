@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NativePopover from "./pages/NativePopover";
+import SafeArea from "./pages/SafeArea";
+import IsolationProperty from "./pages/IsolationProperty";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -18,6 +20,8 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Index />}>
             <Route index element={<NativePopover />} />
+            <Route path="safe-area" element={<SafeArea />} />
+            <Route path="isolation" element={<IsolationProperty />} />
           </Route>
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
