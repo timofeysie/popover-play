@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Menu, X, Code2 } from "lucide-react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 
@@ -13,6 +14,7 @@ const exercises = [
 const Index = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [navOpen, setNavOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-background">
@@ -27,24 +29,33 @@ const Index = () => {
         <button
           popoverTarget="navigation"
           popoverTargetAction="show"
+          aria-controls="navigation"
+          aria-expanded={navOpen}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 transition-opacity"
         >
-          <Menu className="w-4 h-4" />
+          <Menu className="w-4 h-4" aria-hidden="true" />
           Exercises
         </button>
       </header>
 
       {/* Native Popover Side Panel */}
-      <nav popover="auto" id="navigation" className="z-50">
+      <nav
+        popover="auto"
+        id="navigation"
+        aria-label="Exercises"
+        className="z-50"
+        onToggle={(e) => setNavOpen((e.currentTarget as HTMLElement).matches(':popover-open'))}
+      >
         <div className="p-6 h-full flex flex-col">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-lg font-bold text-foreground">Exercises</h2>
             <button
               popoverTarget="navigation"
               popoverTargetAction="hide"
+              aria-label="Close navigation panel"
               className="p-2 rounded-lg hover:bg-secondary transition-colors"
             >
-              <X className="w-5 h-5 text-muted-foreground" />
+              <X className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
             </button>
           </div>
           <ul className="space-y-2 flex-1">
@@ -54,6 +65,8 @@ const Index = () => {
                   popoverTarget="navigation"
                   popoverTargetAction="hide"
                   onClick={() => ex.active && navigate(ex.path)}
+                  aria-disabled={!ex.active}
+                  aria-current={location.pathname === ex.path ? "page" : undefined}
                   className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
                     location.pathname === ex.path
                       ? "bg-primary text-primary-foreground"
@@ -62,7 +75,7 @@ const Index = () => {
                 >
                   {ex.title}
                   {!ex.active && (
-                    <span className="ml-2 text-xs opacity-50">Coming soon</span>
+                    <span className="ml-2 text-xs opacity-50" aria-hidden="true">Coming soon</span>
                   )}
                 </button>
               </li>
