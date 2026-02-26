@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import NativePopover from "./pages/NativePopover";
 import SafeArea from "./pages/SafeArea";
 import IsolationProperty from "./pages/IsolationProperty";
+import DepthFirstSearch from "./pages/DepthFirstSearch";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
             <Route index element={<NativePopover />} />
             <Route path="safe-area" element={<SafeArea />} />
             <Route path="isolation" element={<IsolationProperty />} />
+            <Route path="dfs" element={<DepthFirstSearch />} />
           </Route>
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
