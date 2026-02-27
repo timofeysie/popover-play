@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Menu, X, Code2 } from "lucide-react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 
@@ -7,8 +7,6 @@ const exercises = [
   { title: "Safe Area", path: "/safe-area", active: true },
   { title: "Isolation Property", path: "/isolation", active: true },
   { title: "Depth-First Search (DFS)", path: "/dfs", active: true },
-  { title: "Dialog Element", path: "/dialog", active: false },
-  { title: "CSS Nesting", path: "/css-nesting", active: false },
   { title: "View Transitions", path: "/view-transitions", active: false },
 ];
 
@@ -16,6 +14,15 @@ const Index = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [navOpen, setNavOpen] = useState(false);
+  const navRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const handler = () => setNavOpen(el.matches(":popover-open"));
+    el.addEventListener("toggle", handler);
+    return () => el.removeEventListener("toggle", handler);
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -41,11 +48,11 @@ const Index = () => {
 
       {/* Native Popover Side Panel */}
       <nav
+        ref={navRef}
         popover="auto"
         id="navigation"
         aria-label="Exercises"
         className="z-50"
-        onToggle={(e) => setNavOpen((e.currentTarget as HTMLElement).matches(':popover-open'))}
       >
         <div className="p-6 h-full flex flex-col">
           <div className="flex items-center justify-between mb-8">

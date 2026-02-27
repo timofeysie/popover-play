@@ -1,61 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useRef, useEffect } from "react";
 import * as d3 from "d3";
-import { BookOpen, Zap, GitBranch, Play, ChevronRight, ExternalLink, ListChecks, Plus, Minus } from "lucide-react";
-
-/** Simple tree node for the demo */
-interface TreeNode {
-  id: string;
-  value: number;
-  left: TreeNode | null;
-  right: TreeNode | null;
-}
-
-/** Build the demo tree:       1
- *                           /   \
- *                          2     3
- *                         / \   /
- *                        4   5 6
- *                             \
- *                              7
- */
-function buildDemoTree(): TreeNode {
-  const n = (v: number, l: TreeNode | null, r: TreeNode | null): TreeNode => ({
-    id: `n${v}`,
-    value: v,
-    left: l,
-    right: r,
-  });
-  const n7 = n(7, null, null);
-  const n6 = n(6, null, n7);
-  const n5 = n(5, null, null);
-  const n4 = n(4, null, null);
-  const n3 = n(3, n6, null);
-  const n2 = n(2, n4, n5);
-  const n1 = n(1, n2, n3);
-  return n1;
-}
-
-const DEMO_TREE = buildDemoTree();
-
-/** DFS pre-order (visit root, then left subtree, then right subtree) */
-function dfsPreOrder(root: TreeNode | null, visit: (node: TreeNode) => void): void {
-  if (!root) return;
-  visit(root);
-  dfsPreOrder(root.left, visit);
-  dfsPreOrder(root.right, visit);
-}
-
-/** DFS pre-order iterative (explicit stack) */
-function dfsPreOrderIterative(root: TreeNode | null, visit: (node: TreeNode) => void): void {
-  if (!root) return;
-  const stack: TreeNode[] = [root];
-  while (stack.length > 0) {
-    const node = stack.pop()!;
-    visit(node);
-    if (node.right) stack.push(node.right);
-    if (node.left) stack.push(node.left);
-  }
-}
+import { BookOpen, Zap, GitBranch, ChevronRight, ExternalLink, ListChecks, Plus, Minus, Lightbulb, Code2, BarChart2 } from "lucide-react";
+import { DfsPreOrderDemo, NumberOfIslandsDemo, type TreeNode } from "@/features/depthFirstSearch";
 
 /** Colors: DFS time (primary), DFS space (accent), others faint */
 const COLORS = {
@@ -175,41 +121,68 @@ function drawComplexityChart(container: SVGSVGElement) {
   });
 }
 
+/** Compact square chart for header: same curves, no legend, no axis labels */
+function drawComplexityChartCompact(container: SVGSVGElement) {
+  const data = Array.from({ length: N_MAX }, (_, i) => i + 1);
+  const series = [
+    { id: "O(1)", fn: (n: number) => 1, color: COLORS.faint },
+    { id: "O(log n)", fn: (n: number) => Math.log2(n) || 0, color: COLORS.faint },
+    { id: "O(n)", fn: (n: number) => n, color: COLORS.faint },
+    { id: "O(n log n)", fn: (n: number) => n * (Math.log2(n) || 0), color: COLORS.faint },
+    { id: "O(n²)", fn: (n: number) => n * n, color: COLORS.faint },
+    { id: "DFS time", fn: (n: number) => n, color: COLORS.dfsTime },
+    { id: "DFS space", fn: (n: number) => Math.log2(n) || 0, color: COLORS.dfsSpace },
+  ];
+  const size = 200;
+  const margin = 12;
+  const inner = size - margin * 2;
+
+  d3.select(container).selectAll("*").remove();
+
+  const svg = d3
+    .select(container)
+    .attr("viewBox", `0 0 ${size} ${size}`)
+    .attr("width", size)
+    .attr("height", size);
+
+  const xScale = d3.scaleLinear().domain([1, N_MAX]).range([margin, size - margin]);
+  const maxVal = Math.max(...series.flatMap((s) => data.map((n) => s.fn(n))));
+  const yScale = d3.scaleLinear().domain([0, maxVal]).range([size - margin, margin]);
+
+  const order = [0, 1, 2, 3, 4, 5, 6];
+  order.forEach((idx) => {
+    const s = series[idx];
+    const pathData = data.map((n) => s.fn(n));
+    const pathGen = d3
+      .line<number>()
+      .x((_, i) => xScale(data[i]))
+      .y((d) => yScale(d));
+    const isDfs = s.id.startsWith("DFS");
+    svg
+      .append("path")
+      .attr("d", pathGen(pathData))
+      .attr("fill", "none")
+      .attr("stroke", s.color)
+      .attr("stroke-width", isDfs ? 2 : 0.8)
+      .attr("stroke-opacity", isDfs ? 1 : 0.5);
+  });
+}
+
 const DepthFirstSearch = () => {
   const chartRef = useRef<SVGSVGElement>(null);
-  const [visitOrder, setVisitOrder] = useState<string[]>([]);
-  const [isRunning, setIsRunning] = useState(false);
+  const chartHeaderRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
     if (chartRef.current) drawComplexityChart(chartRef.current);
+    if (chartHeaderRef.current) drawComplexityChartCompact(chartHeaderRef.current);
   }, []);
-
-  const runDfs = () => {
-    setIsRunning(true);
-    setVisitOrder([]);
-    const order: string[] = [];
-    dfsPreOrder(DEMO_TREE, (node) => order.push(node.id));
-    let i = 0;
-    const interval = setInterval(() => {
-      if (i < order.length) {
-        setVisitOrder(order.slice(0, i + 1));
-        i++;
-      } else {
-        clearInterval(interval);
-        setIsRunning(false);
-      }
-    }, 400);
-  };
-
-  const isVisited = (id: string) => visitOrder.includes(id);
-  const isCurrent = (id: string) => visitOrder.length > 0 && visitOrder[visitOrder.length - 1] === id;
-  const currentNum = visitOrder.length > 0 ? Number(visitOrder[visitOrder.length - 1].replace("n", "")) : null;
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-12">
       {/* Exercise Header */}
-      <div className="mb-2">
-        <div className="flex items-center gap-2 text-sm text-primary font-medium mb-3">
+      <div className="mb-2 flex flex-col sm:flex-row sm:items-start gap-6">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 text-sm text-primary font-medium mb-3">
           <Zap className="w-4 h-4" />
           Exercise 04
         </div>
@@ -217,12 +190,13 @@ const DepthFirstSearch = () => {
           Depth-First Search (DFS)
         </h2>
         <p className="text-lg text-muted-foreground max-w-2xl leading-relaxed">
-          Depth-First Search explores a tree or graph by going <strong className="text-foreground">as deep as possible</strong> along each branch before backtracking. It’s one of the most common graph/tree traversal algorithms and often appears in frontend and general technical interviews.
+          Depth-First Search explores a tree or graph by going <strong className="text-foreground">as deep as possible</strong> along each branch before backtracking. It’s one of the most common graph/tree traversal algorithms and often appears in technical interviews.
         </p>
         <details className="group mt-4 rounded-lg border border-border bg-muted/20 overflow-hidden">
           <summary className="flex items-center gap-2 list-none cursor-pointer px-4 py-3 text-muted-foreground hover:bg-muted/40 transition-colors [&::-webkit-details-marker]:hidden">
             <ChevronRight className="w-4 h-4 shrink-0 text-primary transition-transform group-open:rotate-90" aria-hidden />
-            <span className="font-medium text-foreground">Key points & why DFS matters</span>
+            <Lightbulb className="w-5 h-5 shrink-0 text-primary" aria-hidden />
+            <span className="font-medium text-foreground">Key points</span>
           </summary>
           <div className="px-4 pb-4 pt-0 text-sm text-muted-foreground border-t border-border">
             <ul className="list-disc list-inside pt-3 space-y-1.5">
@@ -231,10 +205,14 @@ const DepthFirstSearch = () => {
               <li>Useful for path finding, cycle detection, topological sort, and backtracking.</li>
             </ul>
             <p className="mt-4">
-              DFS is frequently used in tree/graph problems (path finding, cycles, connected components, backtracking). It’s often the first algorithm to reach for when you need to explore every node or find a path. In the DSA doc it’s listed as the #1 algorithm most likely to appear in frontend interviews.
+              DFS is frequently used in tree/graph problems (path finding, cycles, connected components, backtracking). It’s often the first algorithm to reach for when you need to explore every node or find a path.
             </p>
           </div>
         </details>
+        </div>
+        <div className="shrink-0 rounded-lg border border-border bg-muted/30 overflow-hidden">
+          <svg ref={chartHeaderRef} className="block" aria-hidden />
+        </div>
       </div>
 
       {/* How it works - native accordion */}
@@ -290,6 +268,7 @@ const DepthFirstSearch = () => {
         <details className="group rounded-lg border border-border bg-muted/20 overflow-hidden">
           <summary className="flex items-center gap-2 list-none cursor-pointer px-4 py-3 text-muted-foreground hover:bg-muted/40 transition-colors [&::-webkit-details-marker]:hidden">
             <ChevronRight className="w-4 h-4 shrink-0 text-primary transition-transform group-open:rotate-90" aria-hidden />
+            <Code2 className="w-5 h-5 shrink-0 text-primary" aria-hidden />
             <span className="font-semibold text-foreground">Code Samples</span>
           </summary>
           <div className="px-4 pb-4 pt-0 border-t border-border space-y-8 pt-4">
@@ -358,6 +337,7 @@ const DepthFirstSearch = () => {
         <details className="group rounded-lg border border-border bg-muted/20 overflow-hidden">
           <summary className="flex items-center gap-2 list-none cursor-pointer px-4 py-3 text-muted-foreground hover:bg-muted/40 transition-colors [&::-webkit-details-marker]:hidden">
             <ChevronRight className="w-4 h-4 shrink-0 text-primary transition-transform group-open:rotate-90" aria-hidden />
+            <BarChart2 className="w-5 h-5 shrink-0 text-primary" aria-hidden />
             <span className="font-semibold text-foreground">Complexity</span>
           </summary>
           <div className="px-4 pb-4 pt-0 border-t border-border">
@@ -410,79 +390,11 @@ const DepthFirstSearch = () => {
           </summary>
           <div className="px-4 pb-4 pt-0 border-t border-border">
             <p className="text-muted-foreground mb-4 pt-4">
-              Pre-order DFS on a small tree. Click &quot;Run DFS&quot; to see the visit order. Current node is highlighted; visited nodes stay filled.
+              Pre-order DFS on a small tree, and DFS on a 2D grid (Number of Islands). Click &quot;Run&quot; to see the visit order. Current node/cell is highlighted; visited nodes or sunk cells stay filled.
             </p>
-            <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
-              <div className="bg-card border border-border rounded-lg p-6 flex-1">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm font-medium text-foreground">Pre-order visit order</span>
-              <button
-                type="button"
-                onClick={runDfs}
-                disabled={isRunning}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50"
-              >
-                <Play className="w-4 h-4" />
-                Run DFS
-              </button>
-            </div>
-            {/* Tree diagram: fixed layout for 1–7; bold = currently visited */}
-            <div className="font-mono text-sm text-muted-foreground mb-4">
-              Tree structure:
-              <pre className="mt-2 text-xs bg-muted/50 p-3 rounded overflow-x-auto">
-                {"     "}
-                <span className={currentNum === 1 ? "font-bold text-foreground" : ""}>1</span>
-                {"\n   / \\\n  "}
-                <span className={currentNum === 2 ? "font-bold text-foreground" : ""}>2</span>
-                {"   "}
-                <span className={currentNum === 3 ? "font-bold text-foreground" : ""}>3</span>
-                {"\n / \\  /\n"}
-                <span className={currentNum === 4 ? "font-bold text-foreground" : ""}>4</span>
-                {"  "}
-                <span className={currentNum === 5 ? "font-bold text-foreground" : ""}>5</span>
-                {" "}
-                <span className={currentNum === 6 ? "font-bold text-foreground" : ""}>6</span>
-                {"\n      \\\n       "}
-                <span className={currentNum === 7 ? "font-bold text-foreground" : ""}>7</span>
-              </pre>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {[1, 2, 3, 4, 5, 6, 7].map((v) => {
-                const id = `n${v}`;
-                const visited = isVisited(id);
-                const current = isCurrent(id);
-                return (
-                  <span
-                    key={id}
-                    className={`inline-flex items-center justify-center w-10 h-10 rounded-lg border-2 font-mono font-semibold text-sm transition-colors ${
-                      current
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : visited
-                          ? "border-primary/60 bg-primary/15 text-foreground"
-                          : "border-border bg-muted/50 text-muted-foreground"
-                    }`}
-                  >
-                    {v}
-                  </span>
-                );
-              })}
-            </div>
-            {visitOrder.length > 0 && (
-              <p className="mt-3 text-xs text-muted-foreground">
-                Order:{" "}
-                {visitOrder.map((id, i) => {
-                  const num = id.replace("n", "");
-                  const isCurrentStep = i === visitOrder.length - 1;
-                  return (
-                    <span key={id}>
-                      {i > 0 && " → "}
-                      <span className={isCurrentStep ? "font-bold text-foreground" : ""}>{num}</span>
-                    </span>
-                  );
-                })}
-              </p>
-            )}
-              </div>
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-start flex-wrap">
+              <DfsPreOrderDemo />
+              <NumberOfIslandsDemo />
             </div>
           </div>
         </details>
