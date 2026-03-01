@@ -55,45 +55,59 @@ After the DFS from a starting `'1'`, the whole island is turned to `'0'`, so the
 
 ## Solution (TypeScript)
 
-Below is the algorithm only — no step recording. The live demo in the app uses a separate pass that records scan/dfs steps for animation.
+Below is the algorithm only — no step recording. The live demo in the app uses a separate pass that records scan and depth-first search steps for animation.
 
 ```ts
+function depthFirstSearch(row: number, col: number): void {
+  // Out of bounds or not land: nothing to do
+  if (row < 0 || row >= rowCount || col < 0 || col >= colCount || grid[row][col] !== "1") return;
+  // Sink this cell so we never count it again (in-place "visited")
+  grid[row][col] = "0";
+  // Recurse on the four neighbors (up, down, left, right)
+  depthFirstSearch(row - 1, col);
+  depthFirstSearch(row + 1, col);
+  depthFirstSearch(row, col - 1);
+  depthFirstSearch(row, col + 1);
+}
+
 function numIslands(grid: string[][]): number {
-  const rows = grid.length;
-  const cols = grid[0]?.length ?? 0;
-  if (rows === 0 || cols === 0) return 0;
+  const rowCount = grid.length;
+  const colCount = grid[0]?.length ?? 0;
+  if (rowCount === 0 || colCount === 0) return 0;
 
-  function dfs(r: number, c: number): void {
-    // Out of bounds or not land: nothing to do
-    if (r < 0 || r >= rows || c < 0 || c >= cols || grid[r][c] !== "1") return;
-    // Sink this cell so we never count it again (in-place "visited")
-    grid[r][c] = "0";
-    // Recurse on the four neighbors (up, down, left, right)
-    dfs(r - 1, c);
-    dfs(r + 1, c);
-    dfs(r, c - 1);
-    dfs(r, c + 1);
-  }
-
-  let count = 0;
-  // Scan every cell; when we see land, we've found a new island — count it and sink the whole island
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (grid[r][c] === "1") {
-        count++;
-        dfs(r, c);
+  let islandCount = 0;
+  /* Scan every cell; 
+   * when we see land, we've found a new island
+   * count it and sink the whole island */
+  for (let row = 0; row < rowCount; row++) {
+    for (let col = 0; col < colCount; col++) {
+      if (grid[row][col] === "1") {
+        islandCount++;
+        depthFirstSearch(row, col);
       }
     }
   }
-  return count;
+  return islandCount;
 }
 ```
+
+Sinking works because the whole connected piece of land is sunk during one DFS, not just the first cell.
+
+1. When we find a "1" and call depthFirstSearch(row, col):
+2. We sink that cell: grid[row][col] = "0".
+We recurse to its four neighbors. For each of those, we call depthFirstSearch again.
+3. Inside each of those calls we do the same: if the neighbor is land, we sink it and recurse to its four neighbors.
+4. So from “land next to the current four neighbors” we again recurse to its neighbors, and so on.
+
+So we don’t stop at the immediate four cells. We keep recursing: every time we see a "1", we sink it and recurse to its four neighbors. That way we walk over every cell that is connected by a path of land (up/down/left/right). By the time the first depthFirstSearch(row, col) returns, the entire island — every connected land cell — has been sunk to "0".
+
+The outer loop then continues to the next cell. Any cell that was part of that island is already "0", so we never see it as land again and never count it as a new island. The “more land next to the current four neighbors” is sunk inside those deeper recursive calls before the outer loop ever gets there.
 
 ---
 
 ## Discussion
 
 - **Same DFS pattern as the tree demo:** In the DFS page we do “visit root, then recurse on children.” Here we “visit” the cell (sink it) and recurse on the four neighbors. The only difference is the graph structure (grid with 4-neighbors instead of a binary tree with left/right).
-- **In-place “visited”:** Flipping `'1'` to `'0'` avoids an extra visited set and keeps space lower; the grid itself is the visited structure. If you cannot mutate the input, use a `Set<string>` of `"r,c"` or a boolean 2D array.
+- **In-place “visited”:** Flipping `'1'` to `'0'` avoids an extra visited set and keeps space lower; the grid itself is the visited structure. If you cannot mutate the input, use a `Set<string>` of `"row,col"` or a boolean 2D array.
 - **BFS alternative:** You can replace the DFS recursion with a queue and explore the island level-by-level; time and space complexity remain O(m × n). DFS is often shorter to write and matches the “go deep first” idea from the DFS page.
 - **Diagonal connections:** The problem defines islands only via horizontal/vertical adjacency. If diagonals were allowed, you would add four more recursive calls (or neighbor directions) for the diagonal cells.
