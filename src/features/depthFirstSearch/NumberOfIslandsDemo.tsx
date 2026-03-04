@@ -3,10 +3,11 @@ import { Play, Pause, ChevronLeft, ChevronRight, Plus, Minus } from "lucide-reac
 
 /** Example grid: "1" = land, "0" = water. This one has 3 islands. */
 const DEMO_GRID: string[][] = [
-  ["1", "1", "1", "1", "0"],
-  ["1", "1", "1", "1", "0"],
   ["0", "0", "0", "0", "0"],
-  ["0", "0", "0", "1", "1"],
+  ["0", "1", "1", "1", "0"],
+  ["0", "1", "1", "1", "0"],
+  ["0", "1", "1", "1", "0"],
+  ["0", "0", "0", "0", "0"],
 ];
 
 /** Animation steps: scan = outer loop position; island = new island found; dfs = cell visited (sunk) during DFS. */
