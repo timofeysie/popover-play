@@ -7,6 +7,7 @@ const exercises = [
   { title: "Safe Area", path: "/safe-area", active: true },
   { title: "Isolation Property", path: "/isolation", active: true },
   { title: "Depth-First Search (DFS)", path: "/dfs", active: true },
+  { title: "Breadth-First Search (BFS)", path: "/bfs", active: true },
   { title: "View Transitions", path: "/view-transitions", active: false },
 ];
 
