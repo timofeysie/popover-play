@@ -9,6 +9,8 @@ import SafeArea from "./pages/SafeArea";
 import IsolationProperty from "./pages/IsolationProperty";
 import DepthFirstSearch from "./pages/DepthFirstSearch";
 import BreadthFirstSearch from "./pages/BreadthFirstSearch";
+import FishStack from "./pages/FishStack";
+import KthSmallestBst from "./pages/KthSmallestBst";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,6 +28,8 @@ const App = () => (
             <Route path="isolation" element={<IsolationProperty />} />
             <Route path="dfs" element={<DepthFirstSearch />} />
             <Route path="bfs" element={<BreadthFirstSearch />} />
+            <Route path="fish-stack" element={<FishStack />} />
+            <Route path="kth-smallest-bst" element={<KthSmallestBst />} />
           </Route>
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

@@ -13,7 +13,8 @@ Instead of recursing from each land cell, we can use a **queue** and explore the
 
 Finally we look at a Euclidean clustering approach.
 Collect all land points: `points = [(r, c) for each (r, c) with grid[r][c] == '1']`.
-Use **Union-Find (Disjoint Set Union):** start with each point in its own set. For each pair of land points that are within Euclidean distance 1 (i.e. 4-neighbors), `union` their sets.
+Use **Union-Find (Disjoint Set Union):** start with each point in its own set. 
+For each pair of land points that are within Euclidean distance 1 (i.e. 4-neighbors), `union` their sets.
 Count the number of distinct roots (or the number of sets). That is the number of islands.
 
 ## Table of contents

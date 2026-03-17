@@ -8,6 +8,8 @@ const exercises = [
   { title: "Isolation Property", path: "/isolation", active: true },
   { title: "Depth-First Search (DFS)", path: "/dfs", active: true },
   { title: "Breadth-First Search (BFS)", path: "/bfs", active: true },
+  { title: "The Fish Stack Problem", path: "/fish-stack", active: true },
+  { title: "Kth Smallest Element in a BST", path: "/kth-smallest-bst", active: true },
   { title: "View Transitions", path: "/view-transitions", active: false },
 ];
 
