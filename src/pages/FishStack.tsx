@@ -26,7 +26,7 @@ const FishStack = () => (
           The Fish Stack Problem
         </h2>
         <p className="text-lg text-muted-foreground max-w-2xl leading-relaxed">
-          N fish move along a river; each has a size and direction (upstream or downstream). When two fish moving in opposite directions meet, the <strong className="text-foreground">larger eats the smaller</strong>. Using a single stack and one pass left-to-right, we count how many fish survive — a classic Codility stacks-and-queues problem.
+          N fish move along a river; each has a size and direction (upstream or downstream). When two fish moving in opposite directions meet, the <strong className="text-foreground">larger eats the smaller</strong>. Using a single stack and one pass left-to-right, we count how many fish survive.
         </p>
         <details className="group mt-4 rounded-lg border border-border bg-muted/20 overflow-hidden">
           <summary className="flex items-center gap-2 list-none cursor-pointer px-4 py-3 text-muted-foreground hover:bg-muted/40 transition-colors [&::-webkit-details-marker]:hidden">
@@ -203,7 +203,11 @@ const FishStack = () => (
         </summary>
         <div className="px-4 pb-4 pt-0 border-t border-border">
           <p className="text-muted-foreground mb-4 pt-4">
-            Run the stack simulation on the example A = [4, 3, 2, 1, 5], B = [0, 1, 0, 0, 0]. The river shows each fish (size and direction); the downstream stack and upstream survivor count update step-by-step. Eaten fish are struck through.
+            Run the stack simulation on the example. 
+            <br /> Sizes: [2, 6, 3, 5, 1, 4, 9, 7, 8, 10, 11, 12]. 
+            <br /> Directions: [0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0] (0 = upstream, 1 = downstream). 
+            <br /> The two-lane stream shows each fish; the downstream stack and upstream survivors update step-by-step. 
+            Eaten fish show X eyes.
           </p>
           <FishStackDemo />
         </div>

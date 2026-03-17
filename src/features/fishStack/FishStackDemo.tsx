@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import { Play, Plus, Minus } from "lucide-react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { Play, Pause, ChevronLeft, ChevronRight, Plus, Minus } from "lucide-react";
 
 /** SVG fish: body + tail, scales by size, faces left (upstream) or right (downstream). */
 function FishSvg({
@@ -23,7 +23,7 @@ function FishSvg({
   const w = 24 * scale;
   const h = 14 * scale;
   const fill = variant === "upstream" ? "hsl(210 70% 48%)" : "hsl(25 90% 52%)";
-  const flip = direction === "left" ? -1 : 1;
+  const flip = direction === "right" ? -1 : 1;
 
   return (
     <span className={`inline-flex flex-col items-center gap-0.5 ${className}`} style={{ opacity }}>
@@ -70,10 +70,11 @@ export interface FishStep {
 }
 
 /** 12 fish: mix of upstream/downstream so the stack builds and gets eaten. */
-const DEMO_A = [2, 6, 3, 5, 1, 4, 9, 7, 8, 10, 11, 12];
-const DEMO_B = [0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0];
+export const DEMO_SIZES = [2, 6, 3, 5, 1, 4, 9, 7, 8, 10, 11, 12];
+export const DEMO_DIRECTIONS = [0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0];
 
-function runFishAlgorithm(
+/** Runs the fish stack algorithm; returns total survivors. Callback is invoked after each step. */
+export function runFishAlgorithm(
   A: number[],
   B: number[],
   onStep: (step: FishStep) => void
@@ -113,31 +114,62 @@ function runFishAlgorithm(
   return upstreamSurvivors + downstreamStack.length;
 }
 
+const FISH_ANIMATION_MS = 600;
+
 export function FishStackDemo() {
   const [steps, setSteps] = useState<FishStep[]>([]);
   const [currentStep, setCurrentStep] = useState(-1);
   const [isRunning, setIsRunning] = useState(false);
   const [totalSurvivors, setTotalSurvivors] = useState<number | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const runDemo = useCallback(() => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
     setIsRunning(true);
     setTotalSurvivors(null);
     const recorded: FishStep[] = [];
-    const result = runFishAlgorithm(DEMO_A, DEMO_B, (step) => recorded.push(step));
+    const result = runFishAlgorithm(DEMO_SIZES, DEMO_DIRECTIONS, (step) => recorded.push(step));
     setSteps(recorded);
     setTotalSurvivors(result);
     setCurrentStep(-1);
 
     let i = 0;
-    const interval = setInterval(() => {
+    intervalRef.current = setInterval(() => {
+      i++;
       if (i < recorded.length) {
         setCurrentStep(i);
-        i++;
       } else {
-        clearInterval(interval);
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        intervalRef.current = null;
         setIsRunning(false);
       }
-    }, 600);
+    }, FISH_ANIMATION_MS);
+  }, []);
+
+  const pauseDemo = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    setIsRunning(false);
+  }, []);
+
+  const stepBack = useCallback(() => {
+    if (isRunning) pauseDemo();
+    setCurrentStep((prev) => Math.max(-1, prev - 1));
+  }, [isRunning, pauseDemo]);
+
+  const stepForward = useCallback(() => {
+    if (isRunning) pauseDemo();
+    setCurrentStep((prev) =>
+      steps.length > 0 ? Math.min(steps.length - 1, prev + 1) : prev
+    );
+  }, [isRunning, pauseDemo, steps.length]);
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, []);
 
   const step = currentStep >= 0 && currentStep < steps.length ? steps[currentStep] : null;
@@ -147,67 +179,171 @@ export function FishStackDemo() {
 
   return (
     <div className="bg-card border border-border rounded-lg p-6 flex-1 min-w-0">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <span className="text-sm font-medium text-foreground">
           Stack simulation (12 fish)
         </span>
-        <button
-          type="button"
-          onClick={runDemo}
-          disabled={isRunning}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50"
-        >
-          <Play className="w-4 h-4" />
-          Run
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={runDemo}
+            disabled={isRunning}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50"
+            title="Run from start"
+          >
+            <Play className="w-4 h-4" />
+            Run
+          </button>
+          <button
+            type="button"
+            onClick={pauseDemo}
+            disabled={!isRunning}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-foreground text-sm font-medium hover:bg-muted/50 disabled:opacity-50 disabled:pointer-events-none"
+            title="Pause"
+          >
+            <Pause className="w-4 h-4" />
+            Pause
+          </button>
+          <button
+            type="button"
+            onClick={stepBack}
+            disabled={currentStep <= -1}
+            className="flex items-center justify-center w-9 h-9 rounded-lg border border-border bg-muted/30 text-foreground text-sm font-medium hover:bg-muted/50 disabled:opacity-50 disabled:pointer-events-none"
+            title="Previous step"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={stepForward}
+            disabled={steps.length === 0 || currentStep >= steps.length - 1}
+            className="flex items-center justify-center w-9 h-9 rounded-lg border border-border bg-muted/30 text-foreground text-sm font-medium hover:bg-muted/50 disabled:opacity-50 disabled:pointer-events-none"
+            title="Next step"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
-      <p className="text-sm text-muted-foreground mb-4">
-        Fish flow at the same speed. 0 = upstream (←), 1 = downstream (→). When two meet, the larger eats the smaller.
+      <p className="text-sm text-muted-foreground mb-2">
+        Fish flow at the same speed. 0 = upstream (←), 1 = downstream (→). When two meet, the larger eats the smaller. Fish moving in the same direction never meet.
+      </p>
+      <p className="text-xs text-muted-foreground mb-2">
+        Opposite directions alone is not enough: two fish must be moving <strong className="text-foreground">toward</strong> each other (on a collision course). Fish #0 is to the left and swims left (←); fish #1 is to the right and swims right (→). So they move <strong className="text-foreground">apart</strong> and never meet. The only pairs that meet are when a downstream fish (→) is to the <strong className="text-foreground">left</strong> of an upstream fish (←) — then they approach and the larger wins.
+      </p>
+      <p className="text-xs text-muted-foreground mb-4">
+        In the lanes below: #0 (top, col 0) and #1 (bottom, col 1) are in different columns and lanes, moving apart. #1 (bottom, col 1) and #2 (top, col 2) are adjacent and point toward each other, so they meet.
       </p>
 
-      {/* Stream: SVG fish by position (left = upstream, right = downstream) */}
+      {/* Two-lane stream: row 0 = upstream (←), row 1 = downstream (→); columns = index */}
       <div className="mb-4">
         <div className="text-xs font-medium text-muted-foreground mb-2">
-          Stream — blue = upstream (←), orange = downstream (→). Size scales with number.
+          Top lane: Upstream (←) · Bottom lane: Downstream (→). Columns = position index.
         </div>
         <div
-          className="flex flex-nowrap items-end gap-3 overflow-x-auto rounded-lg border border-border bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 py-4 px-3"
+          className="overflow-x-auto rounded-lg border border-border bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 py-3 px-3"
           role="img"
-          aria-label="River stream with fish in order from upstream to downstream"
+          aria-label="Two-lane river stream: upstream lane top, downstream lane bottom; columns are positions"
         >
-          {DEMO_A.map((size, i) => {
-            const isUpstream = DEMO_B[i] === 0;
-            const isEaten = step ? eatenSet.has(i) : false;
-            const isCurrent = step?.upToIndex === i;
-            return (
+          <div
+            className="grid gap-y-2 min-w-0"
+            style={{
+              gridTemplateColumns: `repeat(${DEMO_SIZES.length}, minmax(2.75rem, 1fr))`,
+              gridTemplateRows: "auto auto",
+            }}
+          >
+            {/* Row 0: Upstream lane (←) */}
+            {DEMO_SIZES.map((size, i) => (
               <div
-                key={i}
-                className={`inline-flex shrink-0 flex-col items-center gap-1 px-1 py-1 transition-colors ${isCurrent ? "ring-2 ring-primary/40 rounded-lg" : ""}`}
-                data-fish-index={i}
-                data-size={size}
-                data-direction={isUpstream ? "upstream" : "downstream"}
-                data-state={isEaten ? "eaten" : isCurrent ? "current" : "alive"}
+                key={`up-${i}`}
+                className="flex min-h-[3rem] flex-col items-center justify-end gap-0.5"
               >
-                <FishSvg
-                  size={size}
-                  direction={isUpstream ? "left" : "right"}
-                  variant={isUpstream ? "upstream" : "downstream"}
-                  showNumber
-                  eaten={isEaten}
-                  opacity={isEaten ? 0.65 : 1}
-                />
-                <span className={`text-[10px] text-muted-foreground ${isEaten ? "line-through" : ""}`}>
-                  #{i}
-                </span>
+                {DEMO_DIRECTIONS[i] === 0 ? (
+                  <>
+                    <div
+                      className={`flex flex-col items-center gap-0.5 px-1 py-1 transition-colors ${step?.upToIndex === i ? "ring-2 ring-primary/40 rounded-lg" : ""}`}
+                      data-fish-index={i}
+                      data-direction="upstream"
+                      data-state={step ? (eatenSet.has(i) ? "eaten" : step.upToIndex === i ? "current" : "alive") : "alive"}
+                    >
+                      <FishSvg
+                        size={size}
+                        direction="left"
+                        variant="upstream"
+                        showNumber
+                        eaten={step ? eatenSet.has(i) : false}
+                        opacity={step && eatenSet.has(i) ? 0.65 : 1}
+                      />
+                    </div>
+                    <span className={`text-[10px] text-muted-foreground ${step && eatenSet.has(i) ? "line-through" : ""}`}>
+                      #{i}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-[10px] text-muted-foreground/50">—</span>
+                )}
               </div>
-            );
-          })}
+            ))}
+            {/* Row 1: Downstream lane (→) */}
+            {DEMO_SIZES.map((size, i) => (
+              <div
+                key={`down-${i}`}
+                className="flex min-h-[3rem] flex-col items-center justify-start gap-0.5"
+              >
+                {DEMO_DIRECTIONS[i] === 1 ? (
+                  <>
+                    <div
+                      className={`flex flex-col items-center gap-0.5 px-1 py-1 transition-colors ${step?.upToIndex === i ? "ring-2 ring-primary/40 rounded-lg" : ""}`}
+                      data-fish-index={i}
+                      data-direction="downstream"
+                      data-state={step ? (eatenSet.has(i) ? "eaten" : step.upToIndex === i ? "current" : "alive") : "alive"}
+                    >
+                      <FishSvg
+                        size={size}
+                        direction="right"
+                        variant="downstream"
+                        showNumber
+                        eaten={step ? eatenSet.has(i) : false}
+                        opacity={step && eatenSet.has(i) ? 0.65 : 1}
+                      />
+                    </div>
+                    <span className={`text-[10px] text-muted-foreground ${step && eatenSet.has(i) ? "line-through" : ""}`}>
+                      #{i}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-[10px] text-muted-foreground/50">—</span>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
+            <span>Upstream (←)</span>
+            <span>Downstream (→) flow</span>
+          </div>
         </div>
       </div>
 
-      {/* Stack and counts */}
+      {/* Upstream survivors first (left), then downstream stack (right) */}
       <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="rounded-lg border border-border bg-muted/20 p-3">
+          <div className="text-xs font-medium text-muted-foreground mb-1">Upstream survivors</div>
+          <div className="flex flex-wrap gap-1.5 min-h-[2.5rem] items-center">
+            {upstreamSurvivorIndices.length === 0 ? (
+              <span className="text-xs text-muted-foreground italic">0</span>
+            ) : (
+              upstreamSurvivorIndices.map((fishIndex) => (
+                <FishSvg
+                  key={fishIndex}
+                  size={DEMO_SIZES[fishIndex]}
+                  direction="left"
+                  variant="upstream"
+                  showNumber
+                />
+              ))
+            )}
+          </div>
+        </div>
         <div className="rounded-lg border border-border bg-muted/20 p-3">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xs font-medium text-muted-foreground">Downstream stack</span>
@@ -243,31 +379,21 @@ export function FishStackDemo() {
             </p>
           )}
         </div>
-        <div className="rounded-lg border border-border bg-muted/20 p-3">
-          <div className="text-xs font-medium text-muted-foreground mb-1">Upstream survivors</div>
-          <div className="flex flex-wrap gap-1.5 min-h-[2.5rem] items-center">
-            {upstreamSurvivorIndices.length === 0 ? (
-              <span className="text-xs text-muted-foreground italic">0</span>
-            ) : (
-              upstreamSurvivorIndices.map((fishIndex) => (
-                <FishSvg
-                  key={fishIndex}
-                  size={DEMO_A[fishIndex]}
-                  direction="left"
-                  variant="upstream"
-                  showNumber
-                />
-              ))
-            )}
-          </div>
-        </div>
       </div>
 
-      {totalSurvivors !== null && (
-        <p className="text-sm font-medium text-foreground">
-          Total survivors: <span className="font-mono text-primary">{totalSurvivors}</span>
-        </p>
-      )}
+      <p className="text-sm font-medium text-foreground">
+        Total survivors:{" "}
+        <span className="font-mono text-primary">
+          {step != null
+            ? step.upstreamSurvivors + step.stack.length
+            : totalSurvivors !== null
+              ? totalSurvivors
+              : "—"}
+        </span>
+        {step != null && steps.length > 0 && step.upToIndex < steps.length - 1 && (
+          <span className="ml-1.5 text-xs font-normal text-muted-foreground">(so far)</span>
+        )}
+      </p>
 
       <details className="group/explain rounded-lg border border-border bg-muted/20 overflow-hidden mt-4">
         <summary className="flex items-center gap-2 list-none cursor-pointer px-3 py-2.5 text-muted-foreground hover:bg-muted/40 transition-colors [&::-webkit-details-marker]:hidden">
