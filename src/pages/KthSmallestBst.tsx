@@ -26,7 +26,7 @@ const KthSmallestBst = () => (
           Kth Smallest Element in a BST
         </h2>
         <p className="text-lg text-muted-foreground max-w-2xl leading-relaxed">
-          Given the root of a binary search tree and an integer <strong className="text-foreground">k</strong>, return the kth smallest value (1-indexed). Because <strong className="text-foreground">in-order traversal</strong> of a BST visits nodes in ascending order, the kth node we visit is the answer — a classic LeetCode tree problem.
+          Given the root of a Binary Search Tree (BST) and an integer <strong className="text-foreground">k</strong>, return the kth smallest value (1-indexed). Because <strong className="text-foreground">in-order traversal</strong> of a BST visits nodes in ascending order, the kth node we visit is the answer.
         </p>
         <details className="group mt-4 rounded-lg border border-border bg-muted/20 overflow-hidden">
           <summary className="flex items-center gap-2 list-none cursor-pointer px-4 py-3 text-muted-foreground hover:bg-muted/40 transition-colors [&::-webkit-details-marker]:hidden">
@@ -199,7 +199,8 @@ const KthSmallestBst = () => (
         </summary>
         <div className="px-4 pb-4 pt-0 border-t border-border">
           <p className="text-muted-foreground mb-4 pt-4">
-            Tree from Example 1 (root = [3,1,4,null,2]). Choose <em>k</em> and click Run to see in-order traversal; the kth node visited is highlighted as the kth smallest.
+            Choose <em>k</em> and click Run to see in-order traversal; the kth
+            node visited is highlighted as the kth smallest.
           </p>
           <KthSmallestBstDemo />
         </div>

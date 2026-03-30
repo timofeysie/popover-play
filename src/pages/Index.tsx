@@ -10,7 +10,7 @@ const exercises = [
   { title: "Breadth-First Search (BFS)", path: "/bfs", active: true },
   { title: "The Fish Stack Problem", path: "/fish-stack", active: true },
   { title: "Kth Smallest Element in a BST", path: "/kth-smallest-bst", active: true },
-  { title: "View Transitions", path: "/view-transitions", active: false },
+  { title: "Queue Implementation", path: "/queue-implementation", active: false },
 ];
 
 const Index = () => {
