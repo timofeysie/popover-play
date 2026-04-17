@@ -70,3 +70,31 @@ git config --global pull.rebase true
 ```
 
 If you are unsure, `pull.ff only` is the safest default because it never makes a silent decision on your behalf.
+
+### My solution
+
+As a solo developer, I chose `git config pull.rebase true`.
+
+Here is the git log after the pull:
+
+```
+commit df3e10eec6b382264ad1d2c3e1bead031a446064 (HEAD -> main)
+Author: tim.curchod <tim.curchod@8pod.com>
+Date:   Sat Apr 18 09:03:49 2026 +1000
+    add notes on git rebase options
+commit 451c145f147fc9f3a805df30f8a779b2740b5bb9
+Date:   Sat Apr 18 08:22:36 2026 +1000
+    create two sum demo
+Date:   Sat Apr 18 08:16:48 2026 +1000
+    add details on two sum solution evolution
+commit 55b4c8f660c434d7f12e3c07818095b319b36c80
+Author: tim_curchod <timofeyc@hotmail.com>
+Date:   Sat Apr 11 18:24:12 2026 +1000
+    add notes on math for algorithms
+```
+
+Note the two users which resulted in this issue:
+My personal account: <timofeyc@hotmail.com>
+My work github account: <tim.curchod@8pod.com>
+
+I shouldn't really work on personal projects on my work laptop, but since this repo is about learning and career development which is open source and will only enrich my work, it seems OK here.
