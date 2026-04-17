@@ -11,6 +11,7 @@ import DepthFirstSearch from "./pages/DepthFirstSearch";
 import BreadthFirstSearch from "./pages/BreadthFirstSearch";
 import FishStack from "./pages/FishStack";
 import KthSmallestBst from "./pages/KthSmallestBst";
+import TwoSum from "./pages/TwoSum";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="bfs" element={<BreadthFirstSearch />} />
             <Route path="fish-stack" element={<FishStack />} />
             <Route path="kth-smallest-bst" element={<KthSmallestBst />} />
+            <Route path="two-sum" element={<TwoSum />} />
           </Route>
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
