@@ -60,6 +60,70 @@ function FishSvg({
   );
 }
 
+/** Simple forest silhouette for the downstream (left, lower) end. */
+function DownstreamTreesSvg({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 120 44"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <path
+        d="M8 32 L18 12 L28 32 Z"
+        fill="hsl(145 45% 32%)"
+      />
+      <rect x="15" y="30" width="6" height="10" rx="1" fill="hsl(28 40% 28%)" />
+      <path
+        d="M28 34 L40 8 L52 34 Z"
+        fill="hsl(145 42% 36%)"
+      />
+      <rect x="38" y="32" width="7" height="10" rx="1" fill="hsl(28 38% 26%)" />
+      <path
+        d="M48 36 L62 14 L76 36 Z"
+        fill="hsl(152 38% 30%)"
+      />
+      <rect x="58" y="34" width="7" height="10" rx="1" fill="hsl(28 40% 28%)" />
+      <path
+        d="M72 38 L88 10 L104 38 Z"
+        fill="hsl(145 45% 34%)"
+      />
+      <rect x="84" y="36" width="8" height="10" rx="1" fill="hsl(28 38% 26%)" />
+    </svg>
+  );
+}
+
+/** Simple mountain range for the upstream (right, higher) end. */
+function UpstreamMountainsSvg({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 140 52"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <path
+        d="M0 52 L28 18 L52 52 Z"
+        fill="hsl(215 22% 42%)"
+      />
+      <path
+        d="M36 52 L68 8 L100 52 Z"
+        fill="hsl(215 18% 48%)"
+      />
+      <path
+        d="M88 52 L118 22 L140 52 Z"
+        fill="hsl(210 20% 38%)"
+      />
+      <path
+        d="M20 52 L48 28 L72 52 Z"
+        fill="hsl(215 25% 52% / 0.35)"
+      />
+    </svg>
+  );
+}
+
 /** Single step state: after processing fish at index `upToIndex` (inclusive) */
 export interface FishStep {
   upToIndex: number;
@@ -235,91 +299,108 @@ export function FishStackDemo() {
         In the lanes below: #0 (top, col 0) and #1 (bottom, col 1) are in different columns and lanes, moving apart. #1 (bottom, col 1) and #2 (top, col 2) are adjacent and point toward each other, so they meet.
       </p>
 
-      {/* Two-lane stream: row 0 = upstream (←), row 1 = downstream (→); columns = index */}
+      {/* Two-lane stream: row 0 = upstream (←), row 1 = downstream (→); columns = index.
+          River is skewed so the right (upstream, mountains) reads higher than the left (trees). */}
       <div className="mb-4">
         <div className="text-xs font-medium text-muted-foreground mb-2">
-          Top lane: Upstream (←) · Bottom lane: Downstream (→). Columns = position index.
+          The top lane (blue fish) moves left going downstream.  The bottom lane (orange fish) moves right going upstream.
         </div>
-        <div
-          className="overflow-x-auto rounded-lg border border-border bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 py-3 px-3"
-          role="img"
-          aria-label="Two-lane river stream: upstream lane top, downstream lane bottom; columns are positions"
-        >
+        <div className="relative pt-10 pb-8 px-1 overflow-x-auto overflow-y-visible">
           <div
-            className="grid gap-y-2 min-w-0"
-            style={{
-              gridTemplateColumns: `repeat(${DEMO_SIZES.length}, minmax(2.75rem, 1fr))`,
-              gridTemplateRows: "auto auto",
-            }}
+            className="pointer-events-none absolute left-2 top-0 z-10 w-[min(11rem,42%)] max-w-[140px]"
+            aria-hidden
           >
-            {/* Row 0: Upstream lane (←) */}
-            {DEMO_SIZES.map((size, i) => (
-              <div
-                key={`up-${i}`}
-                className="flex min-h-[3rem] flex-col items-center justify-end gap-0.5"
-              >
-                {DEMO_DIRECTIONS[i] === 0 ? (
-                  <>
-                    <div
-                      className={`flex flex-col items-center gap-0.5 px-1 py-1 transition-colors ${step?.upToIndex === i ? "ring-2 ring-primary/40 rounded-lg" : ""}`}
-                      data-fish-index={i}
-                      data-direction="upstream"
-                      data-state={step ? (eatenSet.has(i) ? "eaten" : step.upToIndex === i ? "current" : "alive") : "alive"}
-                    >
-                      <FishSvg
-                        size={size}
-                        direction="left"
-                        variant="upstream"
-                        showNumber
-                        eaten={step ? eatenSet.has(i) : false}
-                        opacity={step && eatenSet.has(i) ? 0.65 : 1}
-                      />
-                    </div>
-                    <span className={`text-[10px] text-muted-foreground ${step && eatenSet.has(i) ? "line-through" : ""}`}>
-                      #{i}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-[10px] text-muted-foreground/50">—</span>
-                )}
-              </div>
-            ))}
-            {/* Row 1: Downstream lane (→) */}
-            {DEMO_SIZES.map((size, i) => (
-              <div
-                key={`down-${i}`}
-                className="flex min-h-[3rem] flex-col items-center justify-start gap-0.5"
-              >
-                {DEMO_DIRECTIONS[i] === 1 ? (
-                  <>
-                    <div
-                      className={`flex flex-col items-center gap-0.5 px-1 py-1 transition-colors ${step?.upToIndex === i ? "ring-2 ring-primary/40 rounded-lg" : ""}`}
-                      data-fish-index={i}
-                      data-direction="downstream"
-                      data-state={step ? (eatenSet.has(i) ? "eaten" : step.upToIndex === i ? "current" : "alive") : "alive"}
-                    >
-                      <FishSvg
-                        size={size}
-                        direction="right"
-                        variant="downstream"
-                        showNumber
-                        eaten={step ? eatenSet.has(i) : false}
-                        opacity={step && eatenSet.has(i) ? 0.65 : 1}
-                      />
-                    </div>
-                    <span className={`text-[10px] text-muted-foreground ${step && eatenSet.has(i) ? "line-through" : ""}`}>
-                      #{i}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-[10px] text-muted-foreground/50">—</span>
-                )}
-              </div>
-            ))}
+            <DownstreamTreesSvg className="w-full h-auto opacity-90" />
           </div>
-          <div className="mt-2 flex justify-between text-[10px] text-muted-foreground">
-            <span>Upstream (←)</span>
-            <span>Downstream (→) flow</span>
+          <div
+            className="pointer-events-none absolute right-0 bottom-0 z-10 w-[min(12rem,45%)] max-w-[150px]"
+            aria-hidden
+          >
+            <UpstreamMountainsSvg className="w-full h-auto opacity-95" />
+          </div>
+          <div
+            className="rounded-lg border border-border bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 shadow-sm origin-bottom [transform:skewY(-5deg)]"
+            role="img"
+            aria-label="Two-lane river stream tilted with upstream toward the right and mountains; trees on the left downstream; upstream lane top, downstream lane bottom; columns are positions"
+          >
+            <div className="overflow-x-auto py-3 px-3 origin-bottom [transform:skewY(5deg)]">
+              <div
+                className="grid gap-y-2 min-w-0"
+                style={{
+                  gridTemplateColumns: `repeat(${DEMO_SIZES.length}, minmax(2.75rem, 1fr))`,
+                  gridTemplateRows: "auto auto",
+                }}
+              >
+                {/* Row 0: Upstream lane (←) */}
+                {DEMO_SIZES.map((size, i) => (
+                  <div
+                    key={`up-${i}`}
+                    className="flex min-h-[3rem] flex-col items-center justify-end gap-0.5"
+                  >
+                    {DEMO_DIRECTIONS[i] === 0 ? (
+                      <>
+                        <div
+                          className={`flex flex-col items-center gap-0.5 px-1 py-1 transition-colors ${step?.upToIndex === i ? "ring-2 ring-primary/40 rounded-lg" : ""}`}
+                          data-fish-index={i}
+                          data-direction="upstream"
+                          data-state={step ? (eatenSet.has(i) ? "eaten" : step.upToIndex === i ? "current" : "alive") : "alive"}
+                        >
+                          <FishSvg
+                            size={size}
+                            direction="left"
+                            variant="upstream"
+                            showNumber
+                            eaten={step ? eatenSet.has(i) : false}
+                            opacity={step && eatenSet.has(i) ? 0.65 : 1}
+                          />
+                        </div>
+                        <span className={`text-[10px] text-muted-foreground ${step && eatenSet.has(i) ? "line-through" : ""}`}>
+                          #{i}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground/50">—</span>
+                    )}
+                  </div>
+                ))}
+                {/* Row 1: Downstream lane (→) */}
+                {DEMO_SIZES.map((size, i) => (
+                  <div
+                    key={`down-${i}`}
+                    className="flex min-h-[3rem] flex-col items-center justify-start gap-0.5"
+                  >
+                    {DEMO_DIRECTIONS[i] === 1 ? (
+                      <>
+                        <div
+                          className={`flex flex-col items-center gap-0.5 px-1 py-1 transition-colors ${step?.upToIndex === i ? "ring-2 ring-primary/40 rounded-lg" : ""}`}
+                          data-fish-index={i}
+                          data-direction="downstream"
+                          data-state={step ? (eatenSet.has(i) ? "eaten" : step.upToIndex === i ? "current" : "alive") : "alive"}
+                        >
+                          <FishSvg
+                            size={size}
+                            direction="right"
+                            variant="downstream"
+                            showNumber
+                            eaten={step ? eatenSet.has(i) : false}
+                            opacity={step && eatenSet.has(i) ? 0.65 : 1}
+                          />
+                        </div>
+                        <span className={`text-[10px] text-muted-foreground ${step && eatenSet.has(i) ? "line-through" : ""}`}>
+                          #{i}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground/50">—</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 flex justify-between gap-2 text-[10px] text-muted-foreground">
+                <span>Downstream</span>
+                <span>Upstream</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
