@@ -12,6 +12,7 @@ import BreadthFirstSearch from "./pages/BreadthFirstSearch";
 import FishStack from "./pages/FishStack";
 import KthSmallestBst from "./pages/KthSmallestBst";
 import TwoSum from "./pages/TwoSum";
+import SlidingWindowMaximum from "./pages/SlidingWindowMaximum";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
             <Route path="fish-stack" element={<FishStack />} />
             <Route path="kth-smallest-bst" element={<KthSmallestBst />} />
             <Route path="two-sum" element={<TwoSum />} />
+            <Route path="sliding-window-maximum" element={<SlidingWindowMaximum />} />
           </Route>
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

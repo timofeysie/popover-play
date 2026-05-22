@@ -11,6 +11,7 @@ const exercises = [
   { title: "The Fish Stack Problem", path: "/fish-stack", active: true },
   { title: "Kth Smallest Element in a BST", path: "/kth-smallest-bst", active: true },
   { title: "Two Sum", path: "/two-sum", active: true },
+  { title: "Sliding Window Maximum", path: "/sliding-window-maximum", active: true },
   { title: "Queue Implementation", path: "/queue-implementation", active: false },
 ];
 
