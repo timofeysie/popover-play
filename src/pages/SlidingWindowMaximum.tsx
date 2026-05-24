@@ -10,8 +10,14 @@ import {
   Lightbulb,
   Code2,
   BarChart2,
+  Columns2,
+  TrendingUp,
 } from "lucide-react";
-import { SlidingWindowMaxDemo } from "@/features/slidingWindowMaximum";
+import {
+  SlidingWindowMaxDemo,
+  SlidingWindowComparisonVisualization,
+  DonchianChannelDemo,
+} from "@/features/slidingWindowMaximum";
 
 const SlidingWindowMaximum = () => (
   <div className="max-w-4xl mx-auto px-6 py-12">
@@ -46,6 +52,13 @@ const SlidingWindowMaximum = () => (
             <p className="mt-4">
               Sliding-window-with-extrema is a classic interview pattern. The same monotonic-deque idea powers problems like <em>sliding window minimum</em>, <em>shortest subarray with sum at least k</em>, and several stock/temperature problems.
             </p>
+            <p className="mt-3 font-medium text-foreground">Real-world applications</p>
+            <ul className="list-disc list-inside mt-1.5 space-y-1.5">
+              <li><strong className="text-foreground">Financial charting</strong> — rolling high/low over the last <em>n</em> trading sessions (Bollinger Bands, Donchian Channels) is exactly this problem at market data scale.</li>
+              <li><strong className="text-foreground">Network monitoring</strong> — tracking peak throughput or maximum latency in the last <em>k</em> seconds to trigger alerts without re-scanning the whole history.</li>
+              <li><strong className="text-foreground">Video/image processing</strong> — morphological dilation (max-pooling over a sliding kernel) uses this trick along each row and column to process frames in O(n) instead of O(n·k).</li>
+              <li><strong className="text-foreground">Game AI &amp; simulations</strong> — maintaining the highest threat score or resource value visible within an agent&apos;s perception radius as it moves, updated incrementally each tick.</li>
+            </ul>
           </div>
         </details>
       </div>
@@ -262,6 +275,45 @@ const SlidingWindowMaximum = () => (
               </details>
             </div>
           </div>
+        </div>
+      </details>
+    </section>
+
+    {/* Side-by-Side Comparison */}
+    <section className="mb-2">
+      <details className="group rounded-lg border border-border bg-muted/20 overflow-hidden">
+        <summary className="flex items-center gap-2 list-none cursor-pointer px-4 py-3 text-muted-foreground hover:bg-muted/40 transition-colors [&::-webkit-details-marker]:hidden">
+          <ChevronRight className="w-4 h-4 shrink-0 text-primary transition-transform group-open:rotate-90" aria-hidden />
+          <Columns2 className="w-5 h-5 shrink-0 text-primary" aria-hidden />
+          <span className="font-semibold text-foreground">Side-by-Side Comparison</span>
+        </summary>
+        <div className="px-4 pb-4 pt-0 border-t border-border">
+          <p className="text-muted-foreground mb-4 pt-4 text-sm">
+            Both algorithms run on the same input in lockstep. Watch the brute force re-scan the
+            full window every step while the deque maintains three simultaneous guarantees — the
+            monotonic trick, recency, and dominance — that keep total work linear.
+          </p>
+          <SlidingWindowComparisonVisualization />
+        </div>
+      </details>
+    </section>
+
+    {/* Real-world Example */}
+    <section className="mb-2">
+      <details className="group rounded-lg border border-border bg-muted/20 overflow-hidden">
+        <summary className="flex items-center gap-2 list-none cursor-pointer px-4 py-3 text-muted-foreground hover:bg-muted/40 transition-colors [&::-webkit-details-marker]:hidden">
+          <ChevronRight className="w-4 h-4 shrink-0 text-primary transition-transform group-open:rotate-90" aria-hidden />
+          <TrendingUp className="w-5 h-5 shrink-0 text-primary" aria-hidden />
+          <span className="font-semibold text-foreground">Real-world Example — Donchian Channel</span>
+        </summary>
+        <div className="px-4 pb-4 pt-0 border-t border-border">
+          <p className="text-muted-foreground mb-4 pt-4 text-sm">
+            A <strong className="text-foreground">Donchian Channel</strong> plots the rolling high and low over the last{" "}
+            <em>k</em> trading sessions — the upper band is the sliding window maximum, the lower band is the minimum.
+            Traders use the width and position of the channel to identify breakouts and trend strength.
+            Step through the sessions to watch the channel grow, the window slide, and the O(n) deque keep the bands updated in one pass.
+          </p>
+          <DonchianChannelDemo />
         </div>
       </details>
     </section>
