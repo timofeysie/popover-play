@@ -66,6 +66,12 @@ export function computeSteps(nums: number[], target: number): TwoSumStep[] {
 
 const ANIMATION_MS = 900;
 
+// Pre-compute max seen entries so the map container can be sized upfront (prevents layout shift).
+// header row ≈ 36px (py-2 + text-sm), each data row ≈ 32px (py-1.5 + text-sm).
+const _ALL_STEPS = computeSteps(DEMO_INPUT.nums, DEMO_INPUT.target);
+const MAX_SEEN_ENTRIES = Math.max(..._ALL_STEPS.map((s) => s.seenAfter.length));
+const SEEN_MAP_HEIGHT = `${36 + MAX_SEEN_ENTRIES * 32}px`;
+
 export function TwoSumDemo({ autoPlay = false, loop = false, hideControls = false }: { autoPlay?: boolean; loop?: boolean; hideControls?: boolean } = {}) {
   const { nums, target } = DEMO_INPUT;
 
@@ -185,11 +191,13 @@ export function TwoSumDemo({ autoPlay = false, loop = false, hideControls = fals
       )}
 
       {/* Step counter */}
+      {!hideControls && (
       <p className="text-xs text-muted-foreground mb-3">
         {currentStep === -1
           ? "Not started — press Run or use → to step through"
           : `Step ${currentStep + 1} of ${steps.length}${step?.status === "found" ? " — answer found!" : ""}`}
       </p>
+      )}
 
       {/* nums array */}
       <div className="mb-5">
@@ -229,9 +237,9 @@ export function TwoSumDemo({ autoPlay = false, loop = false, hideControls = fals
       </div>
 
       {/* Operation panel + seen map */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+      <div className={`grid gap-4 mb-4 ${hideControls ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"}`}>
         {/* Operation panel — code-editor style */}
-        <div>
+        {!hideControls && (<div>
           <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
             Current operation
           </div>
@@ -305,7 +313,7 @@ export function TwoSumDemo({ autoPlay = false, loop = false, hideControls = fals
               )}
             </pre>
           </div>
-        </div>
+        </div>)}
 
         {/* seen Map */}
         <div>
@@ -315,7 +323,7 @@ export function TwoSumDemo({ autoPlay = false, loop = false, hideControls = fals
               Map&lt;value&nbsp;→&nbsp;index&gt;
             </span>
           </div>
-          <div className="rounded-lg border border-border bg-muted/20 overflow-hidden min-h-[10.5rem]">
+          <div className="rounded-lg border border-border bg-muted/20 overflow-hidden" style={{ height: SEEN_MAP_HEIGHT }}>
             {step && step.seenAfter.length > 0 ? (
               <table className="w-full text-sm font-mono">
                 <thead>
@@ -365,7 +373,7 @@ export function TwoSumDemo({ autoPlay = false, loop = false, hideControls = fals
                 </tbody>
               </table>
             ) : (
-              <div className="flex items-center justify-center h-full min-h-[10.5rem]">
+              <div className="flex items-center justify-center h-full">
                 <span className="text-xs text-muted-foreground italic">
                   {step ? "empty" : "not started"}
                 </span>
@@ -376,7 +384,7 @@ export function TwoSumDemo({ autoPlay = false, loop = false, hideControls = fals
       </div>
 
       {/* Result banner */}
-      {step?.status === "found" && step.result && (
+      {!hideControls && step?.status === "found" && step.result && (
         <div className="rounded-lg border border-primary/40 bg-primary/10 px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="font-semibold text-primary text-sm">Answer found</span>
           <span className="font-mono font-bold text-primary text-sm">

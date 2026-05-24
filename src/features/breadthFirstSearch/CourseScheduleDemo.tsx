@@ -33,11 +33,13 @@ function DependencyGraph({
   prerequisites,
   courseNumbers,
   highlightEdge,
+  hideCaption = false,
 }: {
   numCourses: number;
   prerequisites: number[][];
   courseNumbers: number[];
   highlightEdge?: [number, number];
+  hideCaption?: boolean;
 }) {
   const nodeWidth = 88;
   const nodeHeight = 32;
@@ -126,9 +128,11 @@ function DependencyGraph({
           );
         })}
       </svg>
+      {!hideCaption && (
       <figcaption className="text-xs text-muted-foreground mt-1">
         Dependency graph: arrow from A to B means “B requires A”.{highlightEdge != null && " Red dashed arrow = back edge (creates cycle)."}
       </figcaption>
+      )}
     </figure>
   );
 }
@@ -194,20 +198,25 @@ export function CourseScheduleDemo({ autoRun = false, hideControls = false }: { 
 
   return (
     <div className="bg-card border border-border rounded-lg p-6 flex-1 space-y-8">
+      {!hideControls && (
       <div className="flex items-center justify-between mb-4">
         <span className="text-sm font-medium text-foreground">Course Schedule (Kahn’s algorithm)</span>
       </div>
+      )}
 
       {/* Passing case: English 101 → 102 → 103 */}
       <section>
+        {!hideControls && (<>
         <h4 className="text-sm font-semibold text-foreground mb-2">Passing case (no cycle)</h4>
         <p className="text-sm text-muted-foreground mb-3">
           English 101 has no prereq; 102 requires 101; 103 requires 102. Valid order: English 101 → 102 → 103.
         </p>
+        </>)}
         <DependencyGraph
           numCourses={PASSING_NUM_COURSES}
           prerequisites={PASSING_PREREQUISITES}
           courseNumbers={COURSE_NUMBERS}
+          hideCaption={hideControls}
         />
         <div className="mb-3">
           <CourseTable
@@ -227,7 +236,7 @@ export function CourseScheduleDemo({ autoRun = false, hideControls = false }: { 
             Run
           </button>
           )}
-          {resultPassing && (
+          {!hideControls && resultPassing && (
             <div className="text-sm">
               Can finish:{" "}
               <strong className={resultPassing.canFinish ? "text-green-600 dark:text-green-400" : "text-destructive"}>
@@ -245,19 +254,24 @@ export function CourseScheduleDemo({ autoRun = false, hideControls = false }: { 
 
       {/* Failing case: cycle 101 → 102 → 103 → 101 */}
       <section>
+        {!hideControls && (<>
         <h4 className="text-sm font-semibold text-foreground mb-2">Failing case (cycle)</h4>
         <p className="text-sm text-muted-foreground mb-3">
           Same courses, but English 101 now requires 103. That creates a cycle (101 → 102 → 103 → 101), so you cannot finish all.
         </p>
+        </>)}
         <DependencyGraph
           numCourses={FAILING_NUM_COURSES}
           prerequisites={FAILING_PREREQUISITES}
           courseNumbers={COURSE_NUMBERS}
           highlightEdge={[2, 0]}
+          hideCaption={hideControls}
         />
+        {!hideControls && (
         <p className="text-xs text-muted-foreground mb-3">
           The <strong className="text-destructive">red dashed arrow</strong> (103 → 101) is the back edge: 101 cannot be taken until 103 is done, but 103 requires 102 and 102 requires 101, so no course can be taken first. That cycle is why Kahn’s algorithm leaves nodes in the queue and returns false.
         </p>
+        )}
         <div className="mb-3">
           <CourseTable
             numCourses={FAILING_NUM_COURSES}
@@ -276,7 +290,7 @@ export function CourseScheduleDemo({ autoRun = false, hideControls = false }: { 
             Run
           </button>
           )}
-          {resultFailing && (
+          {!hideControls && resultFailing && (
             <div className="text-sm">
               Can finish:{" "}
               <strong className={resultFailing.canFinish ? "text-green-600 dark:text-green-400" : "text-destructive"}>

@@ -180,6 +180,35 @@ export function runFishAlgorithm(
 
 const FISH_ANIMATION_MS = 600;
 
+// Pre-compute fixed container heights so neither panel expands during animation.
+// Mirrors FishSvg's scale formula and the entry div's py-1.5 padding.
+const _fishEntryPx = (size: number) => {
+  const scale = 0.35 + size * 0.12;
+  return Math.ceil(14 * scale) + 2 + 10 + 12; // svgH + gap-0.5 + text-[10px] + py-1.5×2
+};
+const _precomputedSteps: FishStep[] = [];
+runFishAlgorithm(DEMO_SIZES, DEMO_DIRECTIONS, (s) => _precomputedSteps.push(s));
+
+const STACK_CONTAINER_PX =
+  Math.max(
+    ..._precomputedSteps.map(({ stack }) =>
+      stack.length === 0
+        ? 0
+        : stack.reduce((h, e) => h + _fishEntryPx(e.size), 0)
+          + (stack.length - 1) * 4  // gap-1 between entries
+          + 12                       // p-1.5 container padding
+    )
+  ) + 20; // buffer
+
+const _finalSurvivorSizes = (_precomputedSteps.at(-1)?.upstreamSurvivorIndices ?? []).map(
+  (i) => DEMO_SIZES[i]
+);
+const SURVIVORS_CONTAINER_PX =
+  Math.max(0, ..._finalSurvivorSizes.map((size) => {
+    const scale = 0.35 + size * 0.12;
+    return Math.ceil(14 * scale) + 2 + 10; // svgH + gap + text
+  })) + 10; // buffer
+
 export function FishStackDemo({ autoPlay = false, loop = false, hideControls = false }: { autoPlay?: boolean; loop?: boolean; hideControls?: boolean } = {}) {
   const [steps, setSteps] = useState<FishStep[]>([]);
   const [currentStep, setCurrentStep] = useState(-1);
@@ -306,6 +335,7 @@ export function FishStackDemo({ autoPlay = false, loop = false, hideControls = f
       </div>
       )}
 
+      {!hideControls && (<>
       <p className="text-sm text-muted-foreground mb-2">
         Fish flow at the same speed. 0 = upstream (←), 1 = downstream (→). When two meet, the larger eats the smaller. Fish moving in the same direction never meet.
       </p>
@@ -315,13 +345,16 @@ export function FishStackDemo({ autoPlay = false, loop = false, hideControls = f
       <p className="text-xs text-muted-foreground mb-4">
         In the lanes below: #0 (top, col 0) and #1 (bottom, col 1) are in different columns and lanes, moving apart. #1 (bottom, col 1) and #2 (top, col 2) are adjacent and point toward each other, so they meet.
       </p>
+      </>)}
 
       {/* Two-lane stream: row 0 = upstream (←), row 1 = downstream (→); columns = index.
           River is skewed so the right (upstream, mountains) reads higher than the left (trees). */}
       <div className="mb-4">
+        {!hideControls && (
         <div className="text-xs font-medium text-muted-foreground mb-2">
           The top lane (blue fish) moves left going downstream.  The bottom lane (orange fish) moves right going upstream.
         </div>
+        )}
         <div className="relative pt-10 pb-8 px-1 overflow-x-auto overflow-y-visible">
           <div
             className="pointer-events-none absolute left-2 top-0 z-10 w-[min(11rem,42%)] max-w-[140px]"
@@ -426,7 +459,7 @@ export function FishStackDemo({ autoPlay = false, loop = false, hideControls = f
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div className="rounded-lg border border-border bg-muted/20 p-3">
           <div className="text-xs font-medium text-muted-foreground mb-1">Upstream survivors</div>
-          <div className="flex flex-wrap gap-1.5 min-h-[2.5rem] items-center">
+          <div className="flex flex-wrap gap-1.5 items-center" style={{ height: SURVIVORS_CONTAINER_PX }}>
             {upstreamSurvivorIndices.length === 0 ? (
               <span className="text-xs text-muted-foreground italic">0</span>
             ) : (
@@ -448,7 +481,8 @@ export function FishStackDemo({ autoPlay = false, loop = false, hideControls = f
             <span className="text-[10px] text-muted-foreground">(top ↑)</span>
           </div>
           <div
-            className="flex flex-col-reverse min-h-[7rem] w-full rounded border-2 border-dashed border-border bg-muted/30 p-1.5 gap-1"
+            className="flex flex-col-reverse w-full rounded border-2 border-dashed border-border bg-muted/30 p-1.5 gap-1"
+            style={{ height: STACK_CONTAINER_PX }}
             aria-label="Stack of downstream fish; top of stack at top"
           >
             {stackEntries.length === 0 ? (
@@ -471,7 +505,7 @@ export function FishStackDemo({ autoPlay = false, loop = false, hideControls = f
               ))
             )}
           </div>
-          {stackEntries.length > 0 && (
+          {!hideControls && stackEntries.length > 0 && (
             <p className="text-[10px] text-muted-foreground mt-1.5">
               + size(stack) → survivors
             </p>
@@ -493,7 +527,7 @@ export function FishStackDemo({ autoPlay = false, loop = false, hideControls = f
         )}
       </p>
 
-      <details className="group/explain rounded-lg border border-border bg-muted/20 overflow-hidden mt-4">
+      {!hideControls && (<details className="group/explain rounded-lg border border-border bg-muted/20 overflow-hidden mt-4">
         <summary className="flex items-center gap-2 list-none cursor-pointer px-3 py-2.5 text-muted-foreground hover:bg-muted/40 transition-colors [&::-webkit-details-marker]:hidden">
           <Plus className="w-4 h-4 shrink-0 text-primary group-open/explain:hidden" aria-hidden />
           <Minus className="w-4 h-4 shrink-0 text-primary hidden group-open/explain:inline" aria-hidden />
@@ -509,7 +543,7 @@ export function FishStackDemo({ autoPlay = false, loop = false, hideControls = f
             </p>
           </div>
         </div>
-      </details>
+      </details>)}
     </div>
   );
 }

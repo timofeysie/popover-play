@@ -126,17 +126,21 @@ export function KthSmallestBstDemo({ autoPlay = false, loop = false, hideControl
       </div>
       )}
 
+      {!hideControls && (
       <p className="text-sm text-muted-foreground mb-4">
         In-order (left → node → right) visits nodes in ascending order. The kth
         node visited is the kth smallest. We <em>consider</em> nodes (go left) before{" "}
         <em>visiting</em> them.
       </p>
+      )}
 
       {/* Input array (level-order serialization) */}
       <div className="mb-4">
+        {!hideControls && (
         <div className="text-xs font-medium text-muted-foreground mb-2">
           Input array (level-order)
         </div>
+        )}
         <div className="flex flex-wrap gap-1.5 items-center mb-2">
           {INPUT_ARRAY.map((v, i) => {
             if (v === null) {
@@ -177,7 +181,9 @@ export function KthSmallestBstDemo({ autoPlay = false, loop = false, hideControl
 
       {/* BST diagram with live traversal highlighting */}
       <div className="mb-4">
+        {!hideControls && (
         <div className="text-xs font-medium text-muted-foreground mb-2">BST</div>
+        )}
         <div
           className="text-sm font-mono p-4 rounded-lg overflow-x-auto"
           aria-label={`Tree structure from ${INPUT_STRING}`}
@@ -229,9 +235,11 @@ export function KthSmallestBstDemo({ autoPlay = false, loop = false, hideControl
 
       {/* In-order visit order strip */}
       <div className="mb-4">
+        {!hideControls && (
         <div className="text-xs font-medium text-muted-foreground mb-2">
           In-order visit order
         </div>
+        )}
         <div className="flex flex-wrap gap-2 items-center">
           {INORDER.map((val) => {
             const current = isCurrent(val);
@@ -263,7 +271,7 @@ export function KthSmallestBstDemo({ autoPlay = false, loop = false, hideControl
         </p>
       )}
 
-      <details className="group/explain rounded-lg border border-border bg-muted/20 overflow-hidden mt-4">
+      {!hideControls && (<details className="group/explain rounded-lg border border-border bg-muted/20 overflow-hidden mt-4">
         <summary className="flex items-center gap-2 list-none cursor-pointer px-3 py-2.5 text-muted-foreground hover:bg-muted/40 transition-colors [&::-webkit-details-marker]:hidden">
           <Plus className="w-4 h-4 shrink-0 text-primary group-open/explain:hidden" aria-hidden />
           <Minus className="w-4 h-4 shrink-0 text-primary hidden group-open/explain:inline" aria-hidden />
@@ -284,7 +292,7 @@ export function KthSmallestBstDemo({ autoPlay = false, loop = false, hideControl
             </p>
           </div>
         </div>
-      </details>
+      </details>)}
     </div>
   );
 }

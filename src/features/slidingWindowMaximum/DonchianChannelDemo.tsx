@@ -152,9 +152,11 @@ export function DonchianChannelDemo({ autoPlay = false, loop = false, hideContro
             <span className="font-bold text-foreground font-mono">{TICKER}</span>
             <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded font-medium">FICTIONAL</span>
           </div>
+          {!hideControls && (
           <p className="text-xs text-muted-foreground mt-0.5">
             {K}-session Donchian Channel · rolling high/low via monotonic deque O(n)
           </p>
+          )}
         </div>
         {!hideControls && (<div className="flex items-center gap-1.5">
           <button type="button" onClick={play} disabled={isPlaying}
@@ -177,9 +179,11 @@ export function DonchianChannelDemo({ autoPlay = false, loop = false, hideContro
       </div>
 
       {/* Step label */}
+      {!hideControls && (
       <p className="text-xs text-muted-foreground">
         {`Session D${sessionIdx + 1} of D${CLOSES.length} · window D${windowStart + 1}–D${windowEnd + 1}${isDone ? " — all sessions processed" : ""}`}
       </p>
+      )}
 
       {/* Chart */}
       <ResponsiveContainer width="100%" height={260}>
@@ -250,7 +254,7 @@ export function DonchianChannelDemo({ autoPlay = false, loop = false, hideContro
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {!hideControls && (<div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {([
           { label: "Session",       value: `D${sessionIdx + 1}`,           sub: `close $${CLOSES[sessionIdx]}`,  accent: "bg-muted/20 border-border",         labelCls: "text-muted-foreground" },
           { label: "Window",        value: `D${windowStart+1}–D${windowEnd+1}`, sub: `${K} sessions`,            accent: "bg-muted/20 border-border",         labelCls: "text-muted-foreground" },
@@ -263,10 +267,10 @@ export function DonchianChannelDemo({ autoPlay = false, loop = false, hideContro
             <div className="text-[10px] text-muted-foreground">{sub}</div>
           </div>
         ))}
-      </div>
+      </div>)}
 
       {/* Window price boxes */}
-      <div>
+      {!hideControls && (<div>
         <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
           Prices in window · D{windowStart + 1}–D{windowEnd + 1}
         </div>
@@ -290,10 +294,10 @@ export function DonchianChannelDemo({ autoPlay = false, loop = false, hideContro
             );
           })}
         </div>
-      </div>
+      </div>)}
 
       {/* O(n) note */}
-      <div className="rounded-lg bg-muted/20 border border-border px-4 py-3 text-xs text-muted-foreground">
+      {!hideControls && (<div className="rounded-lg bg-muted/20 border border-border px-4 py-3 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">Why O(n): </span>
         each closing price enters and leaves each deque at most once, so updating the channel
         costs amortised O(1) per session. All {CLOSES.length} sessions require{" "}
@@ -301,7 +305,7 @@ export function DonchianChannelDemo({ autoPlay = false, loop = false, hideContro
         operations — versus{" "}
         <span className="font-mono text-foreground">{CLOSES.length} × {K} = {CLOSES.length * K}</span>{" "}
         for a brute-force re-scan.
-      </div>
+      </div>)}
     </div>
   );
 }

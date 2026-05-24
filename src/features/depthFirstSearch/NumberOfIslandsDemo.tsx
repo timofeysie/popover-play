@@ -225,21 +225,15 @@ export function NumberOfIslandsDemo({ autoPlay = false, loop = false, hideContro
         <span className="text-sm text-muted-foreground">
           Islands found: <strong className="text-foreground">{stepIndex < 0 ? "—" : islandCount}</strong>
         </span>
-        {stepIndex >= 0 && (
-          <>
-            <span className="text-xs text-muted-foreground">
-              Scan iteration: <strong className="text-foreground font-mono">{scanIteration}</strong>
-            </span>
-            <span className="text-xs text-muted-foreground">
-              Recursion depth: <strong className="text-foreground font-mono">{recursionDepth}</strong>
-            </span>
-          </>
-        )}
-        {current && (
-          <span className="text-xs text-muted-foreground font-mono">
-            {isScan ? "Scanning" : "DFS"}({current.row},{current.col})
-          </span>
-        )}
+        <span className={`text-xs text-muted-foreground${stepIndex < 0 ? " invisible" : ""}`}>
+          Scan iteration: <strong className="text-foreground font-mono">{scanIteration}</strong>
+        </span>
+        <span className={`text-xs text-muted-foreground${stepIndex < 0 ? " invisible" : ""}`}>
+          Recursion depth: <strong className="text-foreground font-mono">{recursionDepth}</strong>
+        </span>
+        <span className={`text-xs text-muted-foreground font-mono${!current ? " invisible" : ""}`}>
+          {current ? (isScan ? "Scanning" : "DFS") : "Scanning"}({current?.row ?? 0},{current?.col ?? 0})
+        </span>
       </div>
 
       {/* Grid: each cell shows 1/0 from original grid; styling reflects current / sunk / land / water */}
@@ -274,7 +268,7 @@ export function NumberOfIslandsDemo({ autoPlay = false, loop = false, hideContro
         )}
       </div>
 
-      <details className="group/explain rounded-lg border border-border bg-muted/20 overflow-hidden mb-4">
+      {!hideControls && (<details className="group/explain rounded-lg border border-border bg-muted/20 overflow-hidden mb-4">
         <summary className="flex items-center gap-2 list-none cursor-pointer px-3 py-2.5 text-muted-foreground hover:bg-muted/40 transition-colors [&::-webkit-details-marker]:hidden">
           <Plus className="w-4 h-4 shrink-0 text-primary group-open/explain:hidden" aria-hidden />
           <Minus className="w-4 h-4 shrink-0 text-primary hidden group-open/explain:inline" aria-hidden />
@@ -302,10 +296,10 @@ export function NumberOfIslandsDemo({ autoPlay = false, loop = false, hideContro
             </p>
           </div>
         </div>
-      </details>
+      </details>)}
 
       {/* Legend for cell states */}
-      <div className="flex flex-wrap gap-1.5 items-center text-xs text-muted-foreground">
+      {!hideControls && (<div className="flex flex-wrap gap-1.5 items-center text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <span className="w-5 h-5 rounded border-2 border-border bg-muted" aria-hidden />
           Land
@@ -322,7 +316,7 @@ export function NumberOfIslandsDemo({ autoPlay = false, loop = false, hideContro
           <span className="w-5 h-5 rounded border-2 border-primary/60 bg-primary/15" aria-hidden />
           Sunk
         </span>
-      </div>
+      </div>)}
     </div>
   );
 }
