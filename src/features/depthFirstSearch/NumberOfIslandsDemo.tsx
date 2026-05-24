@@ -64,7 +64,7 @@ const COL_COUNT = DEMO_GRID[0].length;
 
 const ANIMATION_MS = 350;
 
-export function NumberOfIslandsDemo() {
+export function NumberOfIslandsDemo({ autoPlay = false, loop = false, hideControls = false }: { autoPlay?: boolean; loop?: boolean; hideControls?: boolean } = {}) {
   const [stepIndex, setStepIndex] = useState(-1); // -1 = not started; 0..STEPS.length = replay position
   const [isRunning, setIsRunning] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -109,6 +109,21 @@ export function NumberOfIslandsDemo() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
+  }, []);
+
+  const loopRef = useRef<{ loop: boolean; run: () => void }>({ loop: false, run: () => {} });
+  useEffect(() => { loopRef.current = { loop, run: runDfs }; });
+  const wasRunningRef = useRef(false);
+  useEffect(() => {
+    if (wasRunningRef.current && !isRunning && loopRef.current.loop) {
+      const t = setTimeout(() => loopRef.current.run(), 1500);
+      return () => clearTimeout(t);
+    }
+    wasRunningRef.current = isRunning;
+  }, [isRunning]);
+  useEffect(() => {
+    if (autoPlay) runDfs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Derive UI state by replaying steps 0..stepIndex: current cell, sunk set, island count, recursion depth, scan iteration
@@ -160,6 +175,7 @@ export function NumberOfIslandsDemo() {
 
   return (
     <div className="bg-card border border-border rounded-lg p-6 flex-1">
+      {!hideControls && (
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <span className="text-sm font-medium text-foreground">Number of Islands (DFS)</span>
         <div className="flex items-center gap-1">
@@ -203,6 +219,7 @@ export function NumberOfIslandsDemo() {
           </button>
         </div>
       </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4">
         <span className="text-sm text-muted-foreground">

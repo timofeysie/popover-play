@@ -66,7 +66,7 @@ export function computeSteps(nums: number[], target: number): TwoSumStep[] {
 
 const ANIMATION_MS = 900;
 
-export function TwoSumDemo() {
+export function TwoSumDemo({ autoPlay = false, loop = false, hideControls = false }: { autoPlay?: boolean; loop?: boolean; hideControls?: boolean } = {}) {
   const { nums, target } = DEMO_INPUT;
 
   const [steps] = useState<TwoSumStep[]>(() => computeSteps(nums, target));
@@ -116,11 +116,27 @@ export function TwoSumDemo() {
     };
   }, []);
 
+  const loopRef = useRef<{ loop: boolean; run: () => void }>({ loop: false, run: () => {} });
+  useEffect(() => { loopRef.current = { loop, run: runDemo }; });
+  const wasRunningRef = useRef(false);
+  useEffect(() => {
+    if (wasRunningRef.current && !isRunning && loopRef.current.loop) {
+      const t = setTimeout(() => loopRef.current.run(), 1500);
+      return () => clearTimeout(t);
+    }
+    wasRunningRef.current = isRunning;
+  }, [isRunning]);
+  useEffect(() => {
+    if (autoPlay) runDemo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const step = currentStep >= 0 && currentStep < steps.length ? steps[currentStep] : null;
 
   return (
     <div className="bg-card border border-border rounded-lg p-6 flex-1 min-w-0">
       {/* Header + controls */}
+      {!hideControls && (
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <span className="text-sm font-medium text-foreground">
           Hash map simulation — {nums.length} numbers, target = {target}
@@ -166,6 +182,7 @@ export function TwoSumDemo() {
           </button>
         </div>
       </div>
+      )}
 
       {/* Step counter */}
       <p className="text-xs text-muted-foreground mb-3">

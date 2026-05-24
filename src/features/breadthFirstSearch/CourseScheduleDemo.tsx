@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Play } from "lucide-react";
 import { canFinish } from "./courseScheduleDemo";
 
@@ -171,7 +171,7 @@ function CourseTable({
   );
 }
 
-export function CourseScheduleDemo() {
+export function CourseScheduleDemo({ autoRun = false, hideControls = false }: { autoRun?: boolean; hideControls?: boolean } = {}) {
   const [resultPassing, setResultPassing] = useState<{ canFinish: boolean; order: number[] } | null>(null);
   const [resultFailing, setResultFailing] = useState<{ canFinish: boolean; order: number[] } | null>(null);
 
@@ -186,6 +186,11 @@ export function CourseScheduleDemo() {
     const finished = canFinish(FAILING_NUM_COURSES, FAILING_PREREQUISITES, order);
     setResultFailing({ canFinish: finished, order: order.taken });
   };
+
+  useEffect(() => {
+    if (autoRun) { runPassing(); runFailing(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="bg-card border border-border rounded-lg p-6 flex-1 space-y-8">
@@ -212,6 +217,7 @@ export function CourseScheduleDemo() {
           />
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          {!hideControls && (
           <button
             type="button"
             onClick={runPassing}
@@ -220,6 +226,7 @@ export function CourseScheduleDemo() {
             <Play className="w-4 h-4" />
             Run
           </button>
+          )}
           {resultPassing && (
             <div className="text-sm">
               Can finish:{" "}
@@ -259,6 +266,7 @@ export function CourseScheduleDemo() {
           />
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          {!hideControls && (
           <button
             type="button"
             onClick={runFailing}
@@ -267,6 +275,7 @@ export function CourseScheduleDemo() {
             <Play className="w-4 h-4" />
             Run
           </button>
+          )}
           {resultFailing && (
             <div className="text-sm">
               Can finish:{" "}

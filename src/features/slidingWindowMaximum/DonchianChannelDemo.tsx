@@ -66,7 +66,7 @@ function computeDonchian(): SessionPoint[] {
 
 const ALL_DATA = computeDonchian();
 
-export function DonchianChannelDemo() {
+export function DonchianChannelDemo({ autoPlay = false, loop = false, hideControls = false }: { autoPlay?: boolean; loop?: boolean; hideControls?: boolean } = {}) {
   const [sessionIdx, setSessionIdx] = useState(K - 1);
   const [isPlaying, setIsPlaying] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -91,6 +91,21 @@ export function DonchianChannelDemo() {
   const stepForward = useCallback(() => { if (isPlaying) pause(); setSessionIdx(p => Math.min(CLOSES.length - 1, p + 1)); }, [isPlaying, pause]);
 
   useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
+
+  const loopRef = useRef<{ loop: boolean; run: () => void }>({ loop: false, run: () => {} });
+  useEffect(() => { loopRef.current = { loop, run: play }; });
+  const wasRunningRef = useRef(false);
+  useEffect(() => {
+    if (wasRunningRef.current && !isPlaying && loopRef.current.loop) {
+      const t = setTimeout(() => loopRef.current.run(), 1500);
+      return () => clearTimeout(t);
+    }
+    wasRunningRef.current = isPlaying;
+  }, [isPlaying]);
+  useEffect(() => {
+    if (autoPlay) play();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const windowStart   = sessionIdx - K + 1;
   const windowEnd     = sessionIdx;
@@ -141,7 +156,7 @@ export function DonchianChannelDemo() {
             {K}-session Donchian Channel · rolling high/low via monotonic deque O(n)
           </p>
         </div>
-        <div className="flex items-center gap-1.5">
+        {!hideControls && (<div className="flex items-center gap-1.5">
           <button type="button" onClick={play} disabled={isPlaying}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 disabled:opacity-50">
             <Play className="w-3.5 h-3.5" /> Play
@@ -158,7 +173,7 @@ export function DonchianChannelDemo() {
             className="flex items-center justify-center w-8 h-8 rounded-lg border border-border bg-muted/30 text-foreground hover:bg-muted/50 disabled:opacity-50 disabled:pointer-events-none">
             <ChevronRight className="w-4 h-4" />
           </button>
-        </div>
+        </div>)}
       </div>
 
       {/* Step label */}
@@ -224,6 +239,7 @@ export function DonchianChannelDemo() {
       </ResponsiveContainer>
 
       {/* Slider */}
+      {!hideControls && (
       <div className="flex items-center gap-3">
         <span className="text-[10px] text-muted-foreground font-mono w-8">D{K}</span>
         <input type="range" min={K - 1} max={CLOSES.length - 1} value={sessionIdx}
@@ -231,6 +247,7 @@ export function DonchianChannelDemo() {
           className="flex-1 accent-primary cursor-pointer" />
         <span className="text-[10px] text-muted-foreground font-mono w-8 text-right">D{CLOSES.length}</span>
       </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

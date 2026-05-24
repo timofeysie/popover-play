@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { Menu, X, Code2 } from "lucide-react";
-import { Outlet, useNavigate, useLocation } from "react-router-dom";
+import { Outlet, useNavigate, useLocation, Link } from "react-router-dom";
 
 const exercises = [
-  { title: "Native Popover", path: "/", active: true },
+  { title: "Native Popover", path: "/popover", active: true },
   { title: "Safe Area", path: "/safe-area", active: true },
   { title: "Isolation Property", path: "/isolation", active: true },
   { title: "Depth-First Search (DFS)", path: "/dfs", active: true },
@@ -39,16 +39,24 @@ const Index = () => {
             Code<span className="text-primary">Lab</span>
           </h1>
         </div>
-        <button
-          popoverTarget="navigation"
-          popoverTargetAction="show"
-          aria-controls="navigation"
-          aria-expanded={navOpen}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 transition-opacity"
-        >
-          <Menu className="w-4 h-4" aria-hidden="true" />
-          Exercises
-        </button>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/"
+            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Home
+          </Link>
+          <button
+            popoverTarget="navigation"
+            popoverTargetAction="show"
+            aria-controls="navigation"
+            aria-expanded={navOpen}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 transition-opacity"
+          >
+            <Menu className="w-4 h-4" aria-hidden="true" />
+            Exercises
+          </button>
+        </div>
       </header>
 
       {/* Native Popover Side Panel */}

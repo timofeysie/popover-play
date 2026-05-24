@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Play, Plus, Minus } from "lucide-react";
 import { INPUT_ARRAY, formatInputArray } from "./demoConfig";
 import { arrayToTree } from "./kthSmallest";
@@ -11,7 +11,7 @@ const INORDER = inorderSequence(DEMO_TREE);         // ascending sequence for th
 const TRAVERSAL_STEPS = inorderTrace(DEMO_TREE);    // full enter/visit trace for animation
 const INPUT_STRING = formatInputArray(INPUT_ARRAY); // display string for the header
 
-export function KthSmallestBstDemo() {
+export function KthSmallestBstDemo({ autoPlay = false, loop = false, hideControls = false }: { autoPlay?: boolean; loop?: boolean; hideControls?: boolean } = {}) {
   const [k, setK] = useState(1);
   const [stepIndex, setStepIndex] = useState(-1);
   const [visitOrder, setVisitOrder] = useState<number[]>([]);
@@ -66,6 +66,21 @@ export function KthSmallestBstDemo() {
     }, 500);
   }, [k, isRunning]);
 
+  const loopRef = useRef<{ loop: boolean; run: () => void }>({ loop: false, run: () => {} });
+  useEffect(() => { loopRef.current = { loop, run: runDemo }; });
+  const wasRunningRef = useRef(false);
+  useEffect(() => {
+    if (wasRunningRef.current && !isRunning && loopRef.current.loop) {
+      const t = setTimeout(() => loopRef.current.run(), 1500);
+      return () => clearTimeout(t);
+    }
+    wasRunningRef.current = isRunning;
+  }, [isRunning]);
+  useEffect(() => {
+    if (autoPlay) runDemo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Predicate helpers passed down to TreeDiagram and used for the input array strip.
   const isConsidering = (val: number) => consideringPath.includes(val); // on descent path, not yet visited
   const isVisited = (val: number) => visitOrder.includes(val);           // counted in in-order sequence
@@ -74,6 +89,7 @@ export function KthSmallestBstDemo() {
 
   return (
     <div className="bg-card border border-border rounded-lg p-6 flex-1 min-w-0">
+      {!hideControls && (
       <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
         <span className="text-sm font-medium text-foreground">
           In-order traversal (root = {INPUT_STRING})
@@ -108,6 +124,7 @@ export function KthSmallestBstDemo() {
           </button>
         </div>
       </div>
+      )}
 
       <p className="text-sm text-muted-foreground mb-4">
         In-order (left → node → right) visits nodes in ascending order. The kth

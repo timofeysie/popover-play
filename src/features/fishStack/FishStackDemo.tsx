@@ -180,7 +180,7 @@ export function runFishAlgorithm(
 
 const FISH_ANIMATION_MS = 600;
 
-export function FishStackDemo() {
+export function FishStackDemo({ autoPlay = false, loop = false, hideControls = false }: { autoPlay?: boolean; loop?: boolean; hideControls?: boolean } = {}) {
   const [steps, setSteps] = useState<FishStep[]>([]);
   const [currentStep, setCurrentStep] = useState(-1);
   const [isRunning, setIsRunning] = useState(false);
@@ -236,6 +236,21 @@ export function FishStackDemo() {
     };
   }, []);
 
+  const loopRef = useRef<{ loop: boolean; run: () => void }>({ loop: false, run: () => {} });
+  useEffect(() => { loopRef.current = { loop, run: runDemo }; });
+  const wasRunningRef = useRef(false);
+  useEffect(() => {
+    if (wasRunningRef.current && !isRunning && loopRef.current.loop) {
+      const t = setTimeout(() => loopRef.current.run(), 1500);
+      return () => clearTimeout(t);
+    }
+    wasRunningRef.current = isRunning;
+  }, [isRunning]);
+  useEffect(() => {
+    if (autoPlay) runDemo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const step = currentStep >= 0 && currentStep < steps.length ? steps[currentStep] : null;
   const eatenSet = step ? new Set(step.eaten) : new Set<number>();
   const stackEntries = step?.stack ?? [];
@@ -243,6 +258,7 @@ export function FishStackDemo() {
 
   return (
     <div className="bg-card border border-border rounded-lg p-6 flex-1 min-w-0">
+      {!hideControls && (
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <span className="text-sm font-medium text-foreground">
           Stack simulation (12 fish)
@@ -288,6 +304,7 @@ export function FishStackDemo() {
           </button>
         </div>
       </div>
+      )}
 
       <p className="text-sm text-muted-foreground mb-2">
         Fish flow at the same speed. 0 = upstream (←), 1 = downstream (→). When two meet, the larger eats the smaller. Fish moving in the same direction never meet.

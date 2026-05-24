@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
+import Dashboard from "./pages/Dashboard";
 import NativePopover from "./pages/NativePopover";
 import SafeArea from "./pages/SafeArea";
 import IsolationProperty from "./pages/IsolationProperty";
@@ -25,7 +26,8 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />}>
-            <Route index element={<NativePopover />} />
+            <Route index element={<Dashboard />} />
+            <Route path="popover" element={<NativePopover />} />
             <Route path="safe-area" element={<SafeArea />} />
             <Route path="isolation" element={<IsolationProperty />} />
             <Route path="dfs" element={<DepthFirstSearch />} />
