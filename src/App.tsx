@@ -16,6 +16,7 @@ import TwoSum from "./pages/TwoSum";
 import SlidingWindowMaximum from "./pages/SlidingWindowMaximum";
 import JavascriptGotchas from "./pages/JavascriptGotchas";
 import MathRefresher from "./pages/MathRefresher";
+import MissionControlCargoManifest from "./pages/MissionControlCargoManifest";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,6 +41,7 @@ const App = () => (
             <Route path="sliding-window-maximum" element={<SlidingWindowMaximum />} />
             <Route path="javascript-gotchas" element={<JavascriptGotchas />} />
             <Route path="math-refresher" element={<MathRefresher />} />
+            <Route path="mccm" element={<MissionControlCargoManifest />} />
           </Route>
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
