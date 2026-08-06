@@ -75,10 +75,10 @@ export function FunctionsGotcha() {
       </pre>
 
       <ExpandableAnswer title="Show answer">
-        The main difference between the two implementations is how this is handled inside the event handler:
+        The main difference between the two implementations is how <i>this</i> is handled inside the event handler:
         <ul>
-          <li>Arrow functions: this is lexically inherited from the surrounding scope (where the arrow function is defined).</li>
-          <li>Function expressions: this is dynamically set based on how the function is called (in event handlers, it refers to the element the event is bound to).</li>
+          <li>Arrow functions: <i>this</i> is lexically inherited from the surrounding scope (where the arrow function is defined).</li>
+          <li>Function expressions: <i>this</i> is dynamically set based on how the function is called (in event handlers, it refers to the element the event is bound to).</li>
         </ul>
       </ExpandableAnswer>
 

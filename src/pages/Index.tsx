@@ -13,6 +13,7 @@ const exercises = [
   { title: "Two Sum", path: "/two-sum", active: true },
   { title: "Sliding Window Maximum", path: "/sliding-window-maximum", active: true },
   { title: "JavaScript Gotchas", path: "/javascript-gotchas", active: true },
+  { title: "Math Refresher: Quadratic Polynomials", path: "/math-refresher", active: true },
   { title: "Queue Implementation", path: "/queue-implementation", active: false },
 ];
 
