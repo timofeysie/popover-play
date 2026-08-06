@@ -86,16 +86,19 @@ const Index = () => {
             </button>
           </div>
           <ul className="space-y-2 flex-1">
-            {exercises.map((ex) => (
+            {exercises.map((ex) => {
+              const isCurrent =
+                location.pathname === ex.path || location.pathname.startsWith(`${ex.path}/`);
+              return (
               <li key={ex.title}>
                 <button
                   popoverTarget="navigation"
                   popoverTargetAction="hide"
                   onClick={() => ex.active && navigate(ex.path)}
                   aria-disabled={!ex.active}
-                  aria-current={location.pathname === ex.path ? "page" : undefined}
+                  aria-current={isCurrent ? "page" : undefined}
                   className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
-                    location.pathname === ex.path
+                    isCurrent
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                   }`}
@@ -106,7 +109,8 @@ const Index = () => {
                   )}
                 </button>
               </li>
-            ))}
+              );
+            })}
           </ul>
           <p className="text-xs text-muted-foreground mt-auto pt-6 border-t border-border">
             This panel uses the native HTML Popover API — no JavaScript needed.

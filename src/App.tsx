@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import NativePopover from "./pages/NativePopover";
@@ -17,6 +17,10 @@ import SlidingWindowMaximum from "./pages/SlidingWindowMaximum";
 import JavascriptGotchas from "./pages/JavascriptGotchas";
 import MathRefresher from "./pages/MathRefresher";
 import MissionControlCargoManifest from "./pages/MissionControlCargoManifest";
+import MccmWizardShell from "./pages/MccmWizardShell";
+import MccmCargoStep from "./pages/MccmCargoStep";
+import MccmDestinationStep from "./pages/MccmDestinationStep";
+import MccmReviewStep from "./pages/MccmReviewStep";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -41,7 +45,15 @@ const App = () => (
             <Route path="sliding-window-maximum" element={<SlidingWindowMaximum />} />
             <Route path="javascript-gotchas" element={<JavascriptGotchas />} />
             <Route path="math-refresher" element={<MathRefresher />} />
-            <Route path="mccm" element={<MissionControlCargoManifest />} />
+            <Route path="mccm">
+              <Route index element={<Navigate to="cargo" replace />} />
+              <Route path="plan" element={<MissionControlCargoManifest />} />
+              <Route element={<MccmWizardShell />}>
+                <Route path="cargo" element={<MccmCargoStep />} />
+                <Route path="destination" element={<MccmDestinationStep />} />
+                <Route path="review" element={<MccmReviewStep />} />
+              </Route>
+            </Route>
           </Route>
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
