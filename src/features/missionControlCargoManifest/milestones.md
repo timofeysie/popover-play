@@ -1,7 +1,7 @@
 # MCCM Wizard — Milestone Plan
 
 Build order for the Mission Control Cargo Manifest wizard described in
-[`docs/mission-control-cargo-manifest.md`](../../docs/mission-control-cargo-manifest.md).
+[`docs/mission-control-cargo-manifest.md`](../../../docs/mission-control-cargo-manifest.md).
 Each milestone should land as its own PR-sized chunk, in order — later milestones
 depend on earlier ones existing and typechecking.
 

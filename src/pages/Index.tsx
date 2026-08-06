@@ -38,8 +38,11 @@ const Index = () => {
       <header className="border-b border-border px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Code2 className="w-6 h-6 text-primary" />
-          <h1 className="text-lg font-bold tracking-tight">
+          <h1 className="text-lg font-bold tracking-tight flex items-baseline gap-1.5">
             Code<span className="text-primary">Lab</span>
+            <span className="text-xs font-normal text-muted-foreground">
+              v{__APP_VERSION__}
+            </span>
           </h1>
         </div>
         <div className="flex items-center gap-3">
