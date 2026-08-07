@@ -10,6 +10,7 @@ npm run build        # Production build
 npm run lint         # ESLint
 npm run test         # Run tests once (vitest)
 npm run test:watch   # Run tests in watch mode
+npm run test:e2e     # Run Playwright e2e smoke tests (auto-starts the dev server)
 ```
 
 To run a single test file: `npx vitest run src/test/example.test.ts`
@@ -47,7 +48,7 @@ This is a **CodeLab playground** (originally scaffolded with Lovable) built with
 
 **UI components:** shadcn/ui components live in `src/components/ui/` and are not intended to be modified directly.
 
-**Testing:** vitest + jsdom + Testing Library (`src/test/setup.ts`). Tests target the pure algorithm logic exported from feature barrels (e.g. `src/test/fishStack.test.ts`, `src/features/kthSmallestBst/kthSmallestBst.test.ts`) rather than the animated components themselves.
+**Testing:** vitest + jsdom + Testing Library (`src/test/setup.ts`). Tests target the pure algorithm logic exported from feature barrels (e.g. `src/test/fishStack.test.ts`, `src/features/kthSmallestBst/kthSmallestBst.test.ts`) rather than the animated components themselves. `e2e/` holds a small Playwright smoke suite (currently just the MCCM wizard's routing/manifest flow, `e2e/mccm.spec.ts`) — this is deliberately narrow, not a per-demo regression suite; see `docs/playwright-issues.md` for tooling gotchas hit while setting it up.
 
 ## Other notes
 

@@ -1,18 +1,27 @@
-# Welcome to Popover Play
+# Code Lab
 
-## Project info
+Demo App for Data Structures and Algorithm examples and other code and math pages.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+This app began with the native css/html Popover Play example code and grew from there.
 
-## How can I edit this code?
+## Workflow
 
-There are several ways of editing your application.
+```bash
+npm install
+npm run dev          # start the dev server at http://localhost:8080
+npm run build        # production build
+npm run preview      # preview the production build locally
+npm run lint         # ESLint
+npm run test         # run unit tests once (vitest)
+npm run test:watch   # run unit tests in watch mode
+npm run test:e2e     # run Playwright e2e smoke tests (auto-starts the dev server)
+```
 
-**Scaffolded with Lovable**
+To run a single unit test file: `npx vitest run src/test/example.test.ts`.
 
-This app began as a simple prompt to try out various code snippets in a React frontend environment.
-
-Visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+The e2e suite (`e2e/`) is a small Playwright smoke suite, not a full regression suite — currently
+it only covers the Mission Control Cargo Manifest wizard. The first run needs Chromium installed
+once via `npx playwright install chromium`.
 
 ## What technologies are used for this project?
 
