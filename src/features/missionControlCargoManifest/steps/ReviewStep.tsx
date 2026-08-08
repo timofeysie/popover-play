@@ -1,21 +1,210 @@
-import { Navigate } from "react-router-dom";
-import { useMccmStore } from "../store/mccmStore";
+import { useEffect, useState } from "react";
+import { Navigate, Link } from "react-router-dom";
+import { motion } from "motion/react";
+import { Rocket, Loader2, CheckCircle2 } from "lucide-react";
+import { useMccmStore, selectSubtotalUsd } from "../store/mccmStore";
+import {
+  subscribeToCreditExchangeRate,
+  type CreditPriceUpdate,
+  type ConnectionStatus,
+} from "../api/creditStream";
+import type { ManifestLine, Destination } from "../types";
 
 export function ReviewStep() {
   const hasCargo = useMccmStore((state) => state.lines.length > 0);
+  const lines = useMccmStore((state) => state.lines);
+  const destination = useMccmStore((state) => state.destination);
+  const clearanceCode = useMccmStore((state) => state.clearanceCode);
+  const subtotalUsd = useMccmStore(selectSubtotalUsd);
+  const reset = useMccmStore((state) => state.reset);
+  const [launched, setLaunched] = useState(false);
 
-  if (!hasCargo) {
+  if (!hasCargo && !launched) {
     return <Navigate to="/mccm/cargo" replace />;
   }
 
+  if (launched) {
+    return <LaunchConfirmation />;
+  }
+
+  const handleLaunch = () => {
+    reset();
+    setLaunched(true);
+  };
+
   return (
-    <div className="rounded-xl border border-dashed border-border p-6 md:p-8">
-      <h3 className="text-lg font-semibold text-foreground mb-2">
-        Step 3 — Review & Launch
-      </h3>
-      <p className="text-sm text-muted-foreground leading-relaxed">
-        Manifest review and the live "galactic credit" ticker land in M6.
-      </p>
+    <div className="space-y-6">
+      <Link
+        to="/mccm/destination"
+        className="text-sm font-medium text-muted-foreground hover:text-foreground"
+      >
+        ← Back to Destination
+      </Link>
+
+      <div className="grid lg:grid-cols-3 gap-6 items-start">
+        <div className="lg:col-span-2 space-y-6">
+          <ManifestSummary lines={lines} subtotalUsd={subtotalUsd} />
+          <DestinationSummary destination={destination} clearanceCode={clearanceCode} />
+        </div>
+
+        <div className="space-y-4 lg:sticky lg:top-6">
+          <CreditTicker subtotalUsd={subtotalUsd} />
+          <button
+            onClick={handleLaunch}
+            className="w-full flex items-center justify-center gap-2 text-sm font-semibold px-4 py-3 rounded-md bg-primary text-primary-foreground hover:opacity-90"
+          >
+            <Rocket className="w-4 h-4" />
+            Launch Mission
+          </button>
+        </div>
+      </div>
     </div>
+  );
+}
+
+function ManifestSummary({ lines, subtotalUsd }: { lines: ManifestLine[]; subtotalUsd: number }) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 md:p-6 space-y-3">
+      <h3 className="text-sm font-semibold text-foreground">Cargo Manifest</h3>
+      <ul className="space-y-2">
+        {lines.map((line) => (
+          <li key={line.item.id} className="flex items-center gap-3 text-sm">
+            <img
+              src={line.item.thumbnailUrl}
+              alt=""
+              className="w-10 h-10 rounded object-cover bg-muted shrink-0"
+            />
+            <div className="flex-1 min-w-0">
+              <p className="truncate text-foreground">{line.item.title}</p>
+              <p className="text-xs text-muted-foreground">Qty {line.quantity}</p>
+            </div>
+            <span className="font-mono text-foreground">
+              ${(line.item.unitPriceUsd * line.quantity).toFixed(2)}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="flex items-center justify-between pt-2 border-t border-border text-sm">
+        <span className="text-muted-foreground">Subtotal</span>
+        <span className="font-mono font-medium text-foreground">${subtotalUsd.toFixed(2)}</span>
+      </div>
+    </div>
+  );
+}
+
+function DestinationSummary({
+  destination,
+  clearanceCode,
+}: {
+  destination: Destination | null;
+  clearanceCode: string | null;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 md:p-6 space-y-2">
+      <h3 className="text-sm font-semibold text-foreground">Destination</h3>
+      {destination ? (
+        <>
+          <p className="text-sm text-foreground">
+            {destination.station} · {destination.sector}
+          </p>
+          {clearanceCode && (
+            <p className="text-xs font-mono text-muted-foreground">Clearance: {clearanceCode}</p>
+          )}
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          No destination set —{" "}
+          <Link to="/mccm/destination" className="text-primary hover:underline">
+            choose one
+          </Link>
+          .
+        </p>
+      )}
+    </div>
+  );
+}
+
+const STATUS_COPY: Record<ConnectionStatus, string> = {
+  connecting: "Connecting…",
+  open: "Live",
+  reconnecting: "Reconnecting…",
+};
+
+// Isolated in its own component so per-tick WebSocket updates only re-render
+// this subtree, not the manifest/destination summaries above it.
+function CreditTicker({ subtotalUsd }: { subtotalUsd: number }) {
+  const [price, setPrice] = useState<CreditPriceUpdate | null>(null);
+  const [status, setStatus] = useState<ConnectionStatus>("connecting");
+
+  useEffect(() => {
+    const unsubscribe = subscribeToCreditExchangeRate(setPrice, setStatus);
+    return unsubscribe;
+  }, []);
+
+  const isLive = status === "open";
+  const creditsTotal = price ? subtotalUsd / price.priceUsd : null;
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 md:p-6 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-foreground">Galactic Credits</h3>
+        <span
+          className={`flex items-center gap-1.5 text-xs font-medium ${
+            isLive ? "text-primary" : "text-muted-foreground"
+          }`}
+        >
+          {isLive ? (
+            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+          ) : (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          )}
+          {STATUS_COPY[status]}
+        </span>
+      </div>
+
+      <div className={`transition-opacity ${isLive ? "" : "opacity-50"}`}>
+        {creditsTotal !== null ? (
+          <motion.p
+            key={creditsTotal.toFixed(6)}
+            initial={{ opacity: 0.4 }}
+            animate={{ opacity: 1 }}
+            className="text-2xl font-mono font-semibold text-foreground"
+          >
+            {creditsTotal.toFixed(6)} <span className="text-sm text-muted-foreground">CR</span>
+          </motion.p>
+        ) : (
+          <p className="text-sm text-muted-foreground py-1">Awaiting exchange rate…</p>
+        )}
+      </div>
+
+      {price && (
+        <p className="text-xs text-muted-foreground">
+          1 CR ≈ ${price.priceUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })} · last
+          tick {new Date(price.timestamp).toLocaleTimeString()}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function LaunchConfirmation() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-xl border border-border bg-card p-8 text-center space-y-3"
+    >
+      <CheckCircle2 className="w-10 h-10 text-primary mx-auto" />
+      <h3 className="text-lg font-semibold text-foreground">Manifest launched</h3>
+      <p className="text-sm text-muted-foreground">
+        The resupply run is underway. Ready to requisition another shipment?
+      </p>
+      <Link
+        to="/mccm/cargo"
+        className="inline-block text-sm font-medium px-4 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90"
+      >
+        Start a new manifest
+      </Link>
+    </motion.div>
   );
 }

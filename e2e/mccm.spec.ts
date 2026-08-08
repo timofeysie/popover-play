@@ -64,3 +64,38 @@ test.describe("Mission Control Cargo Manifest — destination step", () => {
     await expect(page).toHaveURL(/\/mccm\/review$/);
   });
 });
+
+test.describe("Mission Control Cargo Manifest — review step", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/mccm/cargo");
+    await page.waitForSelector('img[loading="lazy"]');
+    await page.getByRole("button", { name: "Add" }).first().click();
+    await page.getByRole("link", { name: "Continue to Destination →" }).click();
+    await page.waitForURL(/\/mccm\/destination$/);
+
+    await page.getByRole("combobox", { name: "Station" }).click();
+    await page.getByRole("option").first().click();
+    await page.getByRole("combobox", { name: "Sector" }).click();
+    await page.getByRole("option").first().click();
+    await page.getByRole("button", { name: "Continue to Review →" }).click();
+    await page.waitForURL(/\/mccm\/review$/);
+  });
+
+  test("shows the manifest, destination and credit ticker summaries", async ({ page }) => {
+    await expect(page.getByRole("heading", { name: "Cargo Manifest" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Destination" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Galactic Credits" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Launch Mission" })).toBeVisible();
+  });
+
+  test("launching resets the manifest and shows a confirmation", async ({ page }) => {
+    await page.getByRole("button", { name: "Launch Mission" }).click();
+
+    await expect(page.getByRole("heading", { name: "Manifest launched" })).toBeVisible();
+
+    await page.getByRole("link", { name: "Start a new manifest" }).click();
+
+    await expect(page).toHaveURL(/\/mccm\/cargo$/);
+    await expect(page.getByText("0 lines")).toBeVisible();
+  });
+});

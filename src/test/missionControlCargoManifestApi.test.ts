@@ -123,4 +123,86 @@ describe("subscribeToCreditExchangeRate", () => {
 
     expect(closeMock).toHaveBeenCalledOnce();
   });
+
+  it("reports connecting, then open, on a successful connection", () => {
+    const listeners: Record<string, () => void> = {};
+    class FakeWebSocket {
+      addEventListener(type: string, handler: () => void) {
+        listeners[type] = handler;
+      }
+      close() {}
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+
+    const statuses: string[] = [];
+    const unsubscribe = subscribeToCreditExchangeRate(() => {}, (status) => statuses.push(status));
+    listeners.open();
+
+    expect(statuses).toEqual(["connecting", "open"]);
+
+    unsubscribe();
+  });
+
+  it("reconnects with a new socket after the connection closes, and reports status", () => {
+    vi.useFakeTimers();
+
+    const instances: { listeners: Record<string, () => void>; close: () => void }[] = [];
+    class FakeWebSocket {
+      listeners: Record<string, () => void> = {};
+      constructor() {
+        instances.push(this as unknown as { listeners: Record<string, () => void>; close: () => void });
+      }
+      addEventListener(type: string, handler: () => void) {
+        this.listeners[type] = handler;
+      }
+      close() {
+        this.listeners.close?.();
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+
+    const statuses: string[] = [];
+    const unsubscribe = subscribeToCreditExchangeRate(() => {}, (status) => statuses.push(status));
+
+    expect(instances).toHaveLength(1);
+
+    instances[0].listeners.open();
+    instances[0].close(); // simulate a server-initiated drop
+
+    expect(statuses).toEqual(["connecting", "open", "reconnecting"]);
+
+    vi.advanceTimersByTime(2000);
+    expect(instances).toHaveLength(2);
+    expect(statuses.at(-1)).toBe("reconnecting");
+
+    unsubscribe();
+    vi.useRealTimers();
+  });
+
+  it("does not reconnect after being unsubscribed", () => {
+    vi.useFakeTimers();
+
+    const instances: { listeners: Record<string, () => void>; close: () => void }[] = [];
+    class FakeWebSocket {
+      listeners: Record<string, () => void> = {};
+      constructor() {
+        instances.push(this as unknown as { listeners: Record<string, () => void>; close: () => void });
+      }
+      addEventListener(type: string, handler: () => void) {
+        this.listeners[type] = handler;
+      }
+      close() {
+        this.listeners.close?.();
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+
+    const unsubscribe = subscribeToCreditExchangeRate(() => {});
+    unsubscribe();
+
+    vi.advanceTimersByTime(5000);
+    expect(instances).toHaveLength(1);
+
+    vi.useRealTimers();
+  });
 });
