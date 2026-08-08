@@ -1,4 +1,5 @@
 import { Outlet, useLocation, Link } from "react-router-dom";
+import { motion } from "motion/react";
 import { Rocket } from "lucide-react";
 
 const STEPS = [
@@ -34,16 +35,23 @@ export function WizardShell() {
             <li key={step.path} className="flex items-center gap-2 flex-1">
               <div
                 aria-current={isActive ? "step" : undefined}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium w-full transition-colors ${
+                className={`relative flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium w-full overflow-hidden transition-colors ${
                   isActive
-                    ? "bg-primary text-primary-foreground"
+                    ? "text-primary-foreground"
                     : isComplete
                       ? "bg-muted text-foreground"
                       : "bg-muted/40 text-muted-foreground"
                 }`}
               >
-                <span className="font-mono">{index + 1}</span>
-                {step.label}
+                {isActive && (
+                  <motion.div
+                    layoutId="wizard-step-indicator"
+                    className="absolute inset-0 bg-primary"
+                    transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                  />
+                )}
+                <span className="relative font-mono">{index + 1}</span>
+                <span className="relative">{step.label}</span>
               </div>
               {index < STEPS.length - 1 && (
                 <span className="text-muted-foreground/40" aria-hidden="true">
