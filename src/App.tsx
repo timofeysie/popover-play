@@ -16,7 +16,6 @@ import TwoSum from "./pages/TwoSum";
 import SlidingWindowMaximum from "./pages/SlidingWindowMaximum";
 import JavascriptGotchas from "./pages/JavascriptGotchas";
 import MathRefresher from "./pages/MathRefresher";
-import MissionControlCargoManifest from "./pages/MissionControlCargoManifest";
 import MccmWizardShell from "./pages/MccmWizardShell";
 import MccmCargoStep from "./pages/MccmCargoStep";
 import MccmDestinationStep from "./pages/MccmDestinationStep";
@@ -47,7 +46,6 @@ const App = () => (
             <Route path="math-refresher" element={<MathRefresher />} />
             <Route path="mccm">
               <Route index element={<Navigate to="cargo" replace />} />
-              <Route path="plan" element={<MissionControlCargoManifest />} />
               <Route element={<MccmWizardShell />}>
                 <Route path="cargo" element={<MccmCargoStep />} />
                 <Route path="destination" element={<MccmDestinationStep />} />

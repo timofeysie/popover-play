@@ -19,6 +19,9 @@ import { useMccmStore, selectHasHazardousCargo } from "../store/mccmStore";
 import { STATIONS, sectorsForStation } from "../stations";
 import { destinationFormSchema, type DestinationFormValues } from "./destinationSchema";
 
+const TAP_TRANSITION = { type: "spring", stiffness: 500, damping: 30 } as const;
+const MotionLink = motion.create(Link);
+
 export function DestinationStep() {
   const navigate = useNavigate();
   const destination = useMccmStore((state) => state.destination);
@@ -147,15 +150,24 @@ export function DestinationStep() {
         </div>
 
         <div className="flex items-center justify-between pt-2">
-          <Link to="/mccm/cargo" className="text-sm font-medium text-muted-foreground hover:text-foreground">
+          <MotionLink
+            to="/mccm/cargo"
+            whileHover={{ x: -3 }}
+            whileTap={{ scale: 0.97 }}
+            transition={TAP_TRANSITION}
+            className="text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
             ← Back to Cargo Manifest
-          </Link>
-          <button
+          </MotionLink>
+          <motion.button
             type="submit"
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.95 }}
+            transition={TAP_TRANSITION}
             className="text-sm font-medium px-4 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90"
           >
             Continue to Review →
-          </button>
+          </motion.button>
         </div>
       </form>
     </Form>

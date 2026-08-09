@@ -9,6 +9,9 @@ import type { CargoItem, ManifestLine } from "../types";
 
 const PAGE_SIZE = 8;
 const SEARCH_DEBOUNCE_MS = 350;
+const TAP_TRANSITION = { type: "spring", stiffness: 500, damping: 30 } as const;
+
+const MotionLink = motion.create(Link);
 
 interface Flight {
   id: string;
@@ -84,12 +87,15 @@ export function CargoManifestStep() {
             <AlertTriangle className="w-4 h-4 shrink-0" />
             Couldn't load the cargo catalog{error instanceof Error ? `: ${error.message}` : ""}.
           </p>
-          <button
+          <motion.button
             onClick={() => refetch()}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            transition={TAP_TRANSITION}
             className="text-sm font-medium text-primary hover:underline shrink-0"
           >
             Retry
-          </button>
+          </motion.button>
         </div>
       )}
 
@@ -124,23 +130,29 @@ export function CargoManifestStep() {
 
           {data && data.total > data.limit && (
             <div className="flex items-center justify-between pt-2">
-              <button
+              <motion.button
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={page === 0}
+                whileHover={page === 0 ? undefined : { x: -2 }}
+                whileTap={page === 0 ? undefined : { scale: 0.95 }}
+                transition={TAP_TRANSITION}
                 className="text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
               >
                 ← Previous
-              </button>
+              </motion.button>
               <span className="text-xs text-muted-foreground">
                 Page {page + 1} of {totalPages}
               </span>
-              <button
+              <motion.button
                 onClick={() => setPage((p) => p + 1)}
                 disabled={page + 1 >= totalPages}
+                whileHover={page + 1 >= totalPages ? undefined : { x: 2 }}
+                whileTap={page + 1 >= totalPages ? undefined : { scale: 0.95 }}
+                transition={TAP_TRANSITION}
                 className="text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
               >
                 Next →
-              </button>
+              </motion.button>
             </div>
           )}
         </div>
@@ -155,9 +167,15 @@ export function CargoManifestStep() {
       </div>
 
       <div className="flex justify-end pt-2">
-        <Link to="/mccm/destination" className="text-sm font-medium text-primary hover:underline">
+        <MotionLink
+          to="/mccm/destination"
+          whileHover={{ x: 3 }}
+          whileTap={{ scale: 0.97 }}
+          transition={TAP_TRANSITION}
+          className="text-sm font-medium text-primary hover:underline"
+        >
           Continue to Destination →
-        </Link>
+        </MotionLink>
       </div>
 
       <div className="pointer-events-none fixed inset-0 z-50" aria-hidden="true">
@@ -212,29 +230,38 @@ function CargoItemCard({
             ${item.unitPriceUsd.toFixed(2)}
           </span>
           {quantity === 0 ? (
-            <button
+            <motion.button
               onClick={() => onAdd(imgRef.current)}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.92 }}
+              transition={TAP_TRANSITION}
               className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md bg-primary text-primary-foreground hover:opacity-90"
             >
               <Plus className="w-3 h-3" /> Add
-            </button>
+            </motion.button>
           ) : (
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-foreground">Qty {quantity}</span>
-              <button
+              <motion.button
                 onClick={() => onAdd(imgRef.current)}
                 aria-label={`Add another ${item.title}`}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                transition={TAP_TRANSITION}
                 className="p-1 rounded-md hover:bg-muted text-muted-foreground"
               >
                 <Plus className="w-3.5 h-3.5" />
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 onClick={onRemove}
                 aria-label={`Remove ${item.title} from manifest`}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                transition={TAP_TRANSITION}
                 className="text-xs font-medium text-destructive hover:underline"
               >
                 Remove
-              </button>
+              </motion.button>
             </div>
           )}
         </div>
@@ -317,20 +344,26 @@ function ManifestLinesPanel({
                     Qty {line.quantity} · ${(line.item.unitPriceUsd * line.quantity).toFixed(2)}
                   </p>
                 </div>
-                <button
+                <motion.button
                   onClick={() => onIncrement(line.item)}
                   aria-label={`Add another ${line.item.title}`}
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  transition={TAP_TRANSITION}
                   className="p-1 rounded-md hover:bg-muted text-muted-foreground shrink-0"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                </button>
-                <button
+                </motion.button>
+                <motion.button
                   onClick={() => onRemove(line.item.id)}
                   aria-label={`Remove ${line.item.title} from manifest`}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  transition={TAP_TRANSITION}
                   className="text-xs font-medium text-destructive hover:underline shrink-0"
                 >
                   Remove
-                </button>
+                </motion.button>
               </motion.li>
             ))}
           </AnimatePresence>

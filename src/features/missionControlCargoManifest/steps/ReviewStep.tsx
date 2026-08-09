@@ -10,13 +10,17 @@ import {
 } from "../api/creditStream";
 import type { ManifestLine, Destination } from "../types";
 
+const TAP_TRANSITION = { type: "spring", stiffness: 500, damping: 30 } as const;
+const LAUNCH_DELAY_MS = 700;
+const MotionLink = motion.create(Link);
+
 export function ReviewStep() {
   const hasCargo = useMccmStore((state) => state.lines.length > 0);
   const lines = useMccmStore((state) => state.lines);
   const destination = useMccmStore((state) => state.destination);
   const clearanceCode = useMccmStore((state) => state.clearanceCode);
   const subtotalUsd = useMccmStore(selectSubtotalUsd);
-  const reset = useMccmStore((state) => state.reset);
+  const [launching, setLaunching] = useState(false);
   const [launched, setLaunched] = useState(false);
 
   if (!hasCargo && !launched) {
@@ -24,22 +28,29 @@ export function ReviewStep() {
   }
 
   if (launched) {
+    // The store is reset lazily, from LaunchConfirmation's "start a new
+    // manifest" link — not here. Clearing `lines` in this same transition
+    // would flip `hasCargo` to false while `launched` was still settling,
+    // and the guard above would redirect away before this ever rendered.
     return <LaunchConfirmation />;
   }
 
   const handleLaunch = () => {
-    reset();
-    setLaunched(true);
+    setLaunching(true);
+    setTimeout(() => setLaunched(true), LAUNCH_DELAY_MS);
   };
 
   return (
     <div className="space-y-6">
-      <Link
+      <MotionLink
         to="/mccm/destination"
-        className="text-sm font-medium text-muted-foreground hover:text-foreground"
+        whileHover={{ x: -3 }}
+        whileTap={{ scale: 0.97 }}
+        transition={TAP_TRANSITION}
+        className="inline-block text-sm font-medium text-muted-foreground hover:text-foreground"
       >
         ← Back to Destination
-      </Link>
+      </MotionLink>
 
       <div className="grid lg:grid-cols-3 gap-6 items-start">
         <div className="lg:col-span-2 space-y-6">
@@ -49,13 +60,31 @@ export function ReviewStep() {
 
         <div className="space-y-4 lg:sticky lg:top-6">
           <CreditTicker subtotalUsd={subtotalUsd} />
-          <button
+          <motion.button
             onClick={handleLaunch}
-            className="w-full flex items-center justify-center gap-2 text-sm font-semibold px-4 py-3 rounded-md bg-primary text-primary-foreground hover:opacity-90"
+            disabled={launching}
+            whileHover={launching ? undefined : { scale: 1.03 }}
+            whileTap={launching ? undefined : { scale: 0.95 }}
+            transition={TAP_TRANSITION}
+            className="w-full flex items-center justify-center gap-2 text-sm font-semibold px-4 py-3 rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-70"
           >
-            <Rocket className="w-4 h-4" />
-            Launch Mission
-          </button>
+            {launching ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Launching…
+              </>
+            ) : (
+              <>
+                <motion.span
+                  animate={{ x: [0, 2, 0] }}
+                  transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+                >
+                  <Rocket className="w-4 h-4" />
+                </motion.span>
+                Launch Mission
+              </>
+            )}
+          </motion.button>
         </div>
       </div>
     </div>
@@ -114,9 +143,15 @@ function DestinationSummary({
       ) : (
         <p className="text-sm text-muted-foreground">
           No destination set —{" "}
-          <Link to="/mccm/destination" className="text-primary hover:underline">
+          <MotionLink
+            to="/mccm/destination"
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            transition={TAP_TRANSITION}
+            className="inline-block text-primary hover:underline"
+          >
             choose one
-          </Link>
+          </MotionLink>
           .
         </p>
       )}
@@ -188,6 +223,8 @@ function CreditTicker({ subtotalUsd }: { subtotalUsd: number }) {
 }
 
 function LaunchConfirmation() {
+  const reset = useMccmStore((state) => state.reset);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -199,12 +236,16 @@ function LaunchConfirmation() {
       <p className="text-sm text-muted-foreground">
         The resupply run is underway. Ready to requisition another shipment?
       </p>
-      <Link
+      <MotionLink
         to="/mccm/cargo"
+        onClick={() => reset()}
+        whileHover={{ scale: 1.03 }}
+        whileTap={{ scale: 0.95 }}
+        transition={TAP_TRANSITION}
         className="inline-block text-sm font-medium px-4 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90"
       >
         Start a new manifest
-      </Link>
+      </MotionLink>
     </motion.div>
   );
 }
