@@ -3,6 +3,7 @@
 ## Architectural design
 
 AI cannot understand your application's full architecture or long-term maintenance needs.
+
 It tends to generate simple, isolated solutions that ignore existing patterns, folder conventions, or the way data flows through your app.
 
 **Example — AI drops a fetch directly into a component instead of following an established data-fetching layer:**

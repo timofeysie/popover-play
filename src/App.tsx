@@ -16,6 +16,7 @@ import TwoSum from "./pages/TwoSum";
 import SlidingWindowMaximum from "./pages/SlidingWindowMaximum";
 import JavascriptGotchas from "./pages/JavascriptGotchas";
 import MathRefresher from "./pages/MathRefresher";
+import AttentionLimits from "./pages/AttentionLimits";
 import MccmWizardShell from "./pages/MccmWizardShell";
 import MccmCargoStep from "./pages/MccmCargoStep";
 import MccmDestinationStep from "./pages/MccmDestinationStep";
@@ -44,6 +45,7 @@ const App = () => (
             <Route path="sliding-window-maximum" element={<SlidingWindowMaximum />} />
             <Route path="javascript-gotchas" element={<JavascriptGotchas />} />
             <Route path="math-refresher" element={<MathRefresher />} />
+            <Route path="attention-limits" element={<AttentionLimits />} />
             <Route path="mccm">
               <Route index element={<Navigate to="cargo" replace />} />
               <Route element={<MccmWizardShell />}>
