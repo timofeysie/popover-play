@@ -7,6 +7,8 @@ export { AttentionDilutionChart } from "./AttentionDilutionChart";
 export { AttentionSinks } from "./AttentionSinks";
 export { AttentionSinksChart } from "./AttentionSinksChart";
 export { LostInTheMiddle } from "./LostInTheMiddle";
+export { LostInTheMiddleChart } from "./LostInTheMiddleChart";
 export { TheDumbZone } from "./TheDumbZone";
 export { ContextRot } from "./ContextRot";
+export { ContextRotChart } from "./ContextRotChart";
 export { RepetitionHack } from "./RepetitionHack";

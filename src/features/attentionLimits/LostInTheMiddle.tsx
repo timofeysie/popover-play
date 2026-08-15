@@ -1,4 +1,6 @@
 import { GlossaryCard } from "./GlossaryCard";
+import { LostInTheMiddleChart } from "./LostInTheMiddleChart";
+import { RepetitionHack } from "./RepetitionHack";
 
 export function LostInTheMiddle() {
   return (
@@ -7,6 +9,7 @@ export function LostInTheMiddle() {
       tagline="Attention is U-shaped: strong at the edges, weak in the center."
       provenance="established"
     >
+      <LostInTheMiddleChart />
       <p>
         From Liu et al., <i>"Lost in the Middle: How Language Models Use Long
         Contexts"</i> (2023) — a well-cited finding that models attend most
@@ -18,6 +21,7 @@ export function LostInTheMiddle() {
         silently dropped aren't the first or last ones you wrote — they're the
         ones in the middle of the list.
       </p>
+      <RepetitionHack />
     </GlossaryCard>
   );
 }

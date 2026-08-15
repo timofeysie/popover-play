@@ -4,7 +4,6 @@ import { AttentionSinks } from "./AttentionSinks";
 import { LostInTheMiddle } from "./LostInTheMiddle";
 import { TheDumbZone } from "./TheDumbZone";
 import { ContextRot } from "./ContextRot";
-import { RepetitionHack } from "./RepetitionHack";
 
 export function AttentionLimitsDemo() {
   return (
@@ -15,9 +14,6 @@ export function AttentionLimitsDemo() {
       <LostInTheMiddle />
       <TheDumbZone />
       <ContextRot />
-      <div className="sm:col-span-2">
-        <RepetitionHack />
-      </div>
     </div>
   );
 }

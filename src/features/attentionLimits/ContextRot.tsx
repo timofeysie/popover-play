@@ -1,4 +1,5 @@
 import { GlossaryCard } from "./GlossaryCard";
+import { ContextRotChart } from "./ContextRotChart";
 
 export function ContextRot() {
   return (
@@ -7,6 +8,7 @@ export function ContextRot() {
       tagline="Degradation is a slope, not a cliff at the token limit."
       provenance="mechanism"
     >
+      <ContextRotChart />
       <p>
         A real, measurable effect (see e.g. Chroma's long-context evals) —
         but degradation doesn't only appear once you approach a model's
