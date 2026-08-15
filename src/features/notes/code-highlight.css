@@ -1,0 +1,50 @@
+/* Maps highlight.js token classes to the site's existing --code-* design tokens
+   (see tailwind.config.ts `code` colors) so markdown code samples match the
+   hand-styled code snippets used elsewhere in the app. */
+
+.hljs-comment,
+.hljs-quote {
+  color: hsl(var(--code-comment));
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-built_in,
+.hljs-type {
+  color: hsl(var(--code-keyword));
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-number,
+.hljs-symbol {
+  color: hsl(var(--code-string));
+}
+
+.hljs-tag,
+.hljs-name,
+.hljs-attr,
+.hljs-selector-id,
+.hljs-selector-class {
+  color: hsl(var(--code-tag));
+}
+
+.hljs-title,
+.hljs-title.function_,
+.hljs-title.class_ {
+  color: hsl(var(--code-tag));
+  font-weight: 600;
+}
+
+.hljs-params,
+.hljs-variable,
+.hljs-property,
+.hljs-attribute {
+  color: hsl(var(--code-foreground));
+}
+
+.hljs-meta {
+  color: hsl(var(--code-comment));
+}

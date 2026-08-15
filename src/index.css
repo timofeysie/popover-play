@@ -64,7 +64,8 @@
 }
 
 /* Native Popover Styles */
-#navigation {
+#navigation,
+#notes-navigation {
   position: fixed;
   inset: 0 0 0 auto;
   width: 320px;
@@ -82,7 +83,8 @@
   transition-behavior: allow-discrete;
 }
 
-#navigation:popover-open {
+#navigation:popover-open,
+#notes-navigation:popover-open {
   transform: translateX(0);
   opacity: 1;
 
@@ -92,14 +94,16 @@
   }
 }
 
-#navigation::backdrop {
+#navigation::backdrop,
+#notes-navigation::backdrop {
   background: hsl(220 20% 10% / 0.4);
   backdrop-filter: blur(2px);
   transition: background 0.3s, display 0.3s, backdrop-filter 0.3s;
   transition-behavior: allow-discrete;
 }
 
-#navigation:popover-open::backdrop {
+#navigation:popover-open::backdrop,
+#notes-navigation:popover-open::backdrop {
   @starting-style {
     background: hsl(220 20% 10% / 0);
     backdrop-filter: blur(0);

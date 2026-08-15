@@ -1,6 +1,11 @@
 import { useState, useRef, useEffect } from "react";
-import { Menu, X, Code2 } from "lucide-react";
+import { Menu, X, Code2, NotebookText } from "lucide-react";
 import { Outlet, useNavigate, useLocation, Link } from "react-router-dom";
+
+const notes = [
+  { title: "Performance and Reliability", path: "/notes/performance-and-reliability", active: true },
+  { title: "Security and Usability", path: "/notes/security-and-usability", active: true },
+];
 
 const exercises = [
   { title: "Native Popover", path: "/popover", active: true },
@@ -24,11 +29,21 @@ const Index = () => {
   const location = useLocation();
   const [navOpen, setNavOpen] = useState(false);
   const navRef = useRef<HTMLElement>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const notesNavRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const el = navRef.current;
     if (!el) return;
     const handler = () => setNavOpen(el.matches(":popover-open"));
+    el.addEventListener("toggle", handler);
+    return () => el.removeEventListener("toggle", handler);
+  }, []);
+
+  useEffect(() => {
+    const el = notesNavRef.current;
+    if (!el) return;
+    const handler = () => setNotesOpen(el.matches(":popover-open"));
     el.addEventListener("toggle", handler);
     return () => el.removeEventListener("toggle", handler);
   }, []);
@@ -54,6 +69,16 @@ const Index = () => {
             Home
           </Link>
           <button
+            popoverTarget="notes-navigation"
+            popoverTargetAction="show"
+            aria-controls="notes-navigation"
+            aria-expanded={notesOpen}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary text-secondary-foreground font-medium text-sm hover:opacity-90 transition-opacity"
+          >
+            <NotebookText className="w-4 h-4" aria-hidden="true" />
+            Notes
+          </button>
+          <button
             popoverTarget="navigation"
             popoverTargetAction="show"
             aria-controls="navigation"
@@ -65,6 +90,56 @@ const Index = () => {
           </button>
         </div>
       </header>
+
+      {/* Notes Popover Side Panel */}
+      <nav
+        ref={notesNavRef}
+        popover="auto"
+        id="notes-navigation"
+        aria-label="Notes"
+        className="z-50"
+      >
+        <div className="p-6 h-full flex flex-col">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-lg font-bold text-foreground">Notes</h2>
+            <button
+              popoverTarget="notes-navigation"
+              popoverTargetAction="hide"
+              aria-label="Close notes panel"
+              className="p-2 rounded-lg hover:bg-secondary transition-colors"
+            >
+              <X className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+            </button>
+          </div>
+          <ul className="space-y-2 flex-1">
+            {notes.map((note) => {
+              const isCurrent =
+                location.pathname === note.path || location.pathname.startsWith(`${note.path}/`);
+              return (
+                <li key={note.title}>
+                  <button
+                    popoverTarget="notes-navigation"
+                    popoverTargetAction="hide"
+                    onClick={() => note.active && navigate(note.path)}
+                    aria-disabled={!note.active}
+                    aria-current={isCurrent ? "page" : undefined}
+                    className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                      isCurrent
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    }`}
+                  >
+                    {note.title}
+                    {!note.active && (
+                      <span className="ml-2 text-xs opacity-50" aria-hidden="true">Coming soon</span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </nav>
 
       {/* Native Popover Side Panel */}
       <nav

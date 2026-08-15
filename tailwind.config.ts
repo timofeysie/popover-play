@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import typography from "@tailwindcss/typography";
 
 export default {
   darkMode: ["class"],
@@ -89,7 +90,72 @@ export default {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
       },
+      typography: {
+        DEFAULT: {
+          css: {
+            maxWidth: "none",
+            "--tw-prose-body": "hsl(var(--foreground))",
+            "--tw-prose-headings": "hsl(var(--foreground))",
+            "--tw-prose-links": "hsl(var(--primary))",
+            "--tw-prose-bold": "hsl(var(--foreground))",
+            "--tw-prose-counters": "hsl(var(--muted-foreground))",
+            "--tw-prose-bullets": "hsl(var(--muted-foreground))",
+            "--tw-prose-hr": "hsl(var(--border))",
+            "--tw-prose-quotes": "hsl(var(--foreground))",
+            "--tw-prose-quote-borders": "hsl(var(--border))",
+            "--tw-prose-code": "hsl(var(--code-foreground))",
+            "--tw-prose-pre-code": "hsl(var(--code-foreground))",
+            "--tw-prose-pre-bg": "hsl(var(--code-bg))",
+            "--tw-prose-th-borders": "hsl(var(--border))",
+            "--tw-prose-td-borders": "hsl(var(--border))",
+            code: {
+              backgroundColor: "hsl(var(--code-bg))",
+              borderRadius: "0.25rem",
+              padding: "0.15rem 0.4rem",
+              fontWeight: "400",
+            },
+            "code::before": { content: '""' },
+            "code::after": { content: '""' },
+            pre: {
+              border: "1px solid hsl(var(--border))",
+              marginBottom: "0.5em",
+            },
+            "pre + p": {
+              marginTop: "0.5em",
+            },
+            "p + pre": {
+              marginTop: "2em",
+            },
+          },
+        },
+        sm: {
+          css: {
+            pre: {
+              marginBottom: "0.5em",
+            },
+            "pre + p": {
+              marginTop: "0.5em",
+            },
+            "p + pre": {
+              marginTop: "2em",
+            },
+          },
+        },
+        base: {
+          css: {
+            pre: {
+              marginBottom: "0.5em",
+            },
+            "pre + p": {
+              marginTop: "0.5em",
+            },
+            "p + pre": {
+              marginTop: "2em",
+            },
+          },
+        },
+      },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [require("tailwindcss-animate"), typography],
 } satisfies Config;
