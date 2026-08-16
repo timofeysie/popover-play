@@ -48,9 +48,9 @@ organic search traffic **40% within two months** — a real cost of shipping the
 
 Colors, fonts, and spacing drift from whatever design spec exists, because AI
 fills gaps with plausible-looking defaults instead of reading a design system —
-the same failure mode as the architectural drift covered in
-`Code Quality and Maintainability.md`, applied to visual design instead of code
-structure.
+the same failure mode as the [architectural drift](/notes/code-quality-and-maintainability#architectural-design)
+covered in `Code Quality and Maintainability.md`, applied to visual design
+instead of code structure.
 
 ## Accessibility and standards
 

@@ -23,6 +23,7 @@ import MccmDestinationStep from "./pages/MccmDestinationStep";
 import MccmReviewStep from "./pages/MccmReviewStep";
 import PerformanceReliabilityNote from "./pages/PerformanceReliabilityNote";
 import SecurityUsabilityNote from "./pages/SecurityUsabilityNote";
+import CodeQualityMaintainabilityNote from "./pages/CodeQualityMaintainabilityNote";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -58,6 +59,7 @@ const App = () => (
             </Route>
             <Route path="notes/performance-and-reliability" element={<PerformanceReliabilityNote />} />
             <Route path="notes/security-and-usability" element={<SecurityUsabilityNote />} />
+            <Route path="notes/code-quality-and-maintainability" element={<CodeQualityMaintainabilityNote />} />
           </Route>
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

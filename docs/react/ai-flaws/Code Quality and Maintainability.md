@@ -35,9 +35,10 @@ Always ask: *does this fit how we already do things*, not just *does it work in 
 
 ## Boilerplate and "slop"
 
-AI output can be difficult to review and maintain: 
+AI output can be difficult to review and maintain.
+It can contain
 
-— unnecessary complexity
+- unnecessary complexity
 - duplicated utility functions across files
 - verbose code that could be expressed in a few lines
 

@@ -3,6 +3,7 @@ import { Menu, X, Code2, NotebookText } from "lucide-react";
 import { Outlet, useNavigate, useLocation, Link } from "react-router-dom";
 
 const notes = [
+  { title: "Code Quality and Maintainability", path: "/notes/code-quality-and-maintainability", active: true },
   { title: "Performance and Reliability", path: "/notes/performance-and-reliability", active: true },
   { title: "Security and Usability", path: "/notes/security-and-usability", active: true },
 ];
