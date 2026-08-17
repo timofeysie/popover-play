@@ -31,6 +31,14 @@ function UserProfile({ id }: { id: string }) {
 
 Always ask: *does this fit how we already do things*, not just *does it work in isolation*.
 
+### Mitigation strategy
+
+- **Point at the real pattern, not just the goal.** "Add a component that fetches X" invites reinvention; "add a component that renders X using the existing `useX` hook" constrains the agent to the right seam.
+- **Keep a living rules file** (`CLAUDE.md`/`AGENTS.md`) documenting the data-fetching layer, state-management approach, and folder conventions, so the agent doesn't have to reverse-engineer them from scratch each session.
+- **Scope prompts to one architectural layer at a time.** "Build the whole feature" tends to produce a self-contained blob that ignores shared infrastructure; "add the UI for X, reusing the existing data layer" doesn't.
+- **Review for fit, not just correctness.** Working code that duplicates or bypasses existing infrastructure is still a defect — "does this match how we already do things" belongs in the review, not just "does it work."
+- **Add guardrails that fail loudly.** [Lint rules](/notes/lint-rules) (banning raw `fetch` outside the data layer, import boundaries between folders) catch architectural drift mechanically, even when a prompt or reviewer misses it.
+
 ---
 
 ## Boilerplate and "slop"

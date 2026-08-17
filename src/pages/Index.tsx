@@ -6,6 +6,8 @@ const notes = [
   { title: "Code Quality and Maintainability", path: "/notes/code-quality-and-maintainability", active: true },
   { title: "Performance and Reliability", path: "/notes/performance-and-reliability", active: true },
   { title: "Security and Usability", path: "/notes/security-and-usability", active: true },
+  { title: "Lint Rules as Guardrails", path: "/notes/lint-rules", active: true },
+  { title: "useEffect Without a Dependency Array", path: "/notes/use-effects", active: true },
 ];
 
 const exercises = [

@@ -31,6 +31,11 @@ function UserProfile({ id }: { id: string }) {
 }
 ```
 
+### Mitigation strategy
+
+- **Never write a `useEffect` without a dependency array**, and don't rely on memory to keep it complete — let a linter verify it.
+- **Turn on `eslint-plugin-react-hooks`'s `exhaustive-deps` rule.** It statically flags any value an effect reads but doesn't declare as a dependency, including a missing array entirely. See [lint rules for missing effect dependencies](/notes/lint-rules#catch-missing-effect-dependencies) for the config and a worked example.
+
 ---
 
 ## Missing debounce on search
