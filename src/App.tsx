@@ -26,6 +26,7 @@ import SecurityUsabilityNote from "./pages/SecurityUsabilityNote";
 import CodeQualityMaintainabilityNote from "./pages/CodeQualityMaintainabilityNote";
 import LintRulesNote from "./pages/LintRulesNote";
 import UseEffectsNote from "./pages/UseEffectsNote";
+import AppVersionNote from "./pages/AppVersionNote";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -64,6 +65,7 @@ const App = () => (
             <Route path="notes/code-quality-and-maintainability" element={<CodeQualityMaintainabilityNote />} />
             <Route path="notes/lint-rules" element={<LintRulesNote />} />
             <Route path="notes/use-effects" element={<UseEffectsNote />} />
+            <Route path="notes/app-version" element={<AppVersionNote />} />
           </Route>
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

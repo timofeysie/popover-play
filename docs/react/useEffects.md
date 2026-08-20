@@ -1,10 +1,9 @@
-# useEffect Without a Dependency Array
+# Advanced useEffect
 
-## Is It Ever OK?
+This section delves into the details of the dangerously useful `useEffect` React hook.
 
-Yes — but it's quite rare, and in most React 18 code, an effect with no dependency array is a smell.
+## useEffect Without a Dependency Array
 
-The distinction is:
 
 ```tsx
 useEffect(() => {
@@ -12,9 +11,13 @@ useEffect(() => {
 });
 ```
 
-means: **run this effect after every render.**
+Is It Ever OK?
 
-Whereas:
+Yes — but it's quite rare, and in most React 18 code, an effect with no dependency array is a smell.
+
+The above code snippet means it runs after every render.
+
+Whereas this one:
 
 ```tsx
 useEffect(() => {
@@ -22,9 +25,9 @@ useEffect(() => {
 }, []);
 ```
 
-means: **run this effect after the initial mount** (with the React 18 development/Strict Mode caveat).
+... runs after the initial mount (with the React 18 development/Strict Mode caveat).
 
-And:
+And this one:
 
 ```tsx
 useEffect(() => {
@@ -32,7 +35,7 @@ useEffect(() => {
 }, [value]);
 ```
 
-means: **run this effect after mount and whenever `value` changes.**
+... runs after mount and whenever `value` changes.
 
 ## When Is No Dependency Array Legitimate?
 

@@ -26,6 +26,19 @@ export function NoteDocument({ content }: NoteDocumentProps) {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight, rehypeSlug]}
+        components={{
+          img: ({ src, alt, ...props }) => (
+            <img
+              src={
+                typeof src === "string" && src.startsWith("/")
+                  ? `${import.meta.env.BASE_URL}${src.slice(1)}`
+                  : src
+              }
+              alt={alt}
+              {...props}
+            />
+          ),
+        }}
       >
         {content}
       </ReactMarkdown>

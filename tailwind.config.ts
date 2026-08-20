@@ -116,6 +116,12 @@ export default {
             },
             "code::before": { content: '""' },
             "code::after": { content: '""' },
+            // Typography's defaults make code inside headings inherit the
+            // heading color instead of --tw-prose-code, which is unreadable
+            // against our dark --code-bg background.
+            "h1 code, h2 code, h3 code, h4 code, h5 code, h6 code": {
+              color: "hsl(var(--code-foreground))",
+            },
             pre: {
               border: "1px solid hsl(var(--border))",
               marginBottom: "0.5em",

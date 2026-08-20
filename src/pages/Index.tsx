@@ -7,7 +7,8 @@ const notes = [
   { title: "Performance and Reliability", path: "/notes/performance-and-reliability", active: true },
   { title: "Security and Usability", path: "/notes/security-and-usability", active: true },
   { title: "Lint Rules as Guardrails", path: "/notes/lint-rules", active: true },
-  { title: "useEffect Without a Dependency Array", path: "/notes/use-effects", active: true },
+  { title: "Advanced useEffect", path: "/notes/use-effects", active: true },
+  { title: "The App Version Error", path: "/notes/app-version", active: true },
 ];
 
 const exercises = [
@@ -58,7 +59,7 @@ const Index = () => {
         <div className="flex items-center gap-3">
           <Code2 className="w-6 h-6 text-primary" />
           <h1 className="text-lg font-bold tracking-tight flex items-baseline gap-1.5">
-            Code<span className="text-primary">Lab</span>
+            <span>Code<span className="text-primary">Lab</span></span>
             <span className="text-xs font-normal text-muted-foreground">
               v{__APP_VERSION__}
             </span>
