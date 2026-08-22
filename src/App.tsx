@@ -27,6 +27,7 @@ import CodeQualityMaintainabilityNote from "./pages/CodeQualityMaintainabilityNo
 import LintRulesNote from "./pages/LintRulesNote";
 import UseEffectsNote from "./pages/UseEffectsNote";
 import AppVersionNote from "./pages/AppVersionNote";
+import WorkingWithMarkdownNote from "./pages/WorkingWithMarkdownNote";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -66,6 +67,7 @@ const App = () => (
             <Route path="notes/lint-rules" element={<LintRulesNote />} />
             <Route path="notes/use-effects" element={<UseEffectsNote />} />
             <Route path="notes/app-version" element={<AppVersionNote />} />
+            <Route path="notes/working-with-markdown" element={<WorkingWithMarkdownNote />} />
           </Route>
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

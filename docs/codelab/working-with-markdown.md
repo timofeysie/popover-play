@@ -1,4 +1,6 @@
-# Working with Markdown in the Notes Feature
+# Working with Markdown
+
+## The Notes Feature
 
 The Notes menu (`docs/codelab/*.md`, `docs/react/*.md`, etc.) renders plain markdown files as styled web pages. This is the pipeline from `.md` file to what you see on screen.
 
@@ -19,7 +21,7 @@ export default function AppVersionNote() {
 
 ## Rendering: react-markdown + remark/rehype plugins
 
-`src/features/notes/NoteDocument.tsx` turns that raw string into React elements with [`react-markdown`](https://github.com/remarkjs/react-markdown), which parses markdown into an AST (via `remark`) and converts it to a HAST/React tree (via `rehype`) rather than dumping in raw HTML:
+`src/features/notes/NoteDocument.tsx` turns that raw string into React elements with [`react-markdown`](https://github.com/remarkjs/react-markdown), which parses markdown into an Abstract Syntax Tree (AST) (via `remark`) and converts it to an HTML Abstract Syntax Tree (HAST)/React tree (via `rehype`) rather than dumping in raw HTML:
 
 - `remark-gfm` — GitHub-flavored markdown: tables, task lists, strikethrough, autolinks.
 - `rehype-highlight` — syntax highlighting for fenced code blocks (` ```tsx `). It only touches code with a `language-*` class, i.e. fenced blocks with a language tag — plain inline `` `code` `` spans are left untouched as bare `<code>` elements.

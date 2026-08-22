@@ -67,6 +67,13 @@ function Search() {
 }
 ```
 
+### Mitigation strategy
+
+- **Name the constraint, not just the feature.** "Add a search box" gets a naive `onChange` handler; "add a search box that debounces requests" gets `useDebounce`/`lodash.debounce` from the start — AI defaults to the literal, synchronous version of whatever event it's given.
+- **Treat any handler on a fast-firing event as debounce-or-throttle by default** — keystrokes, scroll, resize, drag. Search wants debounce (wait for a pause); a scroll-position tracker usually wants throttle (run at most every N ms) — call out which one you mean.
+- **Guard against out-of-order responses, not just request volume.** A debounced input can still fire two requests close together; if a stale response resolves after a newer one, it can overwrite fresher results. Track the in-flight query (or use an `AbortController` per keystroke) and drop responses that don't match the current query.
+- **Watch request volume in review**, not just the diff — a network tab open while typing into the field catches a missing debounce that reading the code might not.
+
 ---
 
 ## Over-fetching and lack of context
@@ -98,6 +105,13 @@ function UserCount() {
   return <p>{count} users</p>;
 }
 ```
+
+### Mitigation strategy
+
+- **Ask for the shape, not the source.** "Show the user count" invites "fetch `/api/users` and count them" because that's the only endpoint the model can see; "show the user count, using a count endpoint if one exists, otherwise flag that one is needed" pushes it to check first.
+- **Make the backend contract visible to the prompt.** If the API surface (OpenAPI spec, route list, existing hooks like `useUserCount`) isn't in context, the model can't know a purpose-built endpoint exists and will default to the general-purpose one it does know about.
+- **Treat "fetch everything, filter/count/slice on the client" as a smell in review**, not just a style nit — check what a new call actually returns (row count, payload size) against what the UI displays.
+- **Paginate or scope by default for any list that isn't known to be small.** Ask explicitly for cursor/offset pagination or a `?limit=` param rather than letting the model reach for the unbounded list endpoint.
 
 ---
 

@@ -9,6 +9,7 @@ const notes = [
   { title: "Lint Rules as Guardrails", path: "/notes/lint-rules", active: true },
   { title: "Advanced useEffect", path: "/notes/use-effects", active: true },
   { title: "The App Version Error", path: "/notes/app-version", active: true },
+  { title: "Working with Markdown", path: "/notes/working-with-markdown", active: true },
 ];
 
 const exercises = [
