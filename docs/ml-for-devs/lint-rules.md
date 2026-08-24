@@ -2,7 +2,7 @@
 
 Prompts and reviewers are both easy to route around — a prompt can under-specify, a reviewer can miss a diff on a Friday. Lint rules can't be skipped by accident: they run on every file, every time, and fail the build instead of just leaving a comment. That makes them the cheapest way to catch the [architectural drift](/notes/code-quality-and-maintainability#architectural-design) AI agents tend to introduce — reaching for a raw `fetch` instead of the shared data layer, or reimplementing a util that already exists two folders over.
 
-Three rules cover most of what shows up in practice.
+Four rules cover most of what shows up in practice.
 
 ## Ban raw fetch outside the data layer
 
@@ -92,6 +92,39 @@ useEffect(() => {
 *✅ Passes — every value the effect reads is listed*
 
 It won't catch every infinite-loop shape — an effect that unconditionally calls its own setter is dependency-complete and still loops — but it eliminates the most common AI-generated cause: an effect that's just missing its array.
+
+## Catch missing lazy-loading images
+
+[Missing lazy loading](/notes/performance-and-reliability#missing-lazy-loading) is a one-attribute fix that's easy to skip on every image an agent generates, since nothing about a bare `<img>` looks wrong in review. `no-restricted-syntax` can flag any `<img>` that doesn't declare a `loading` attribute at all, so the omission fails lint instead of shipping silently:
+
+```js
+// eslint.config.js
+{
+  files: ["src/**/*.{ts,tsx}"],
+  rules: {
+    "no-restricted-syntax": [
+      "error",
+      {
+        selector: "JSXOpeningElement[name.name='img']:not(:has(JSXAttribute[name.name='loading']))",
+        message: "Add loading=\"lazy\" to <img> (or loading=\"eager\" to explicitly opt out for above-the-fold images).",
+      },
+    ],
+  },
+},
+```
+
+```tsx
+<img src={product.imageUrl} alt={product.name} />
+```
+*❌ Flagged — no `loading` attribute at all*
+
+```tsx
+<img src={product.imageUrl} alt={product.name} loading="lazy" />
+<img src={hero.imageUrl} alt={hero.name} loading="eager" />
+```
+*✅ Passes — both cases are explicit, whichever way the image is meant to load*
+
+Requiring the attribute rather than a specific value is deliberate: it forces a decision (lazy vs. eager) instead of quietly defaulting to eager, but still lets above-the-fold images opt out on purpose.
 
 ## Why this beats relying on prompts alone
 
