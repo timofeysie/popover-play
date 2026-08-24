@@ -1,6 +1,6 @@
 # Context management
 
-The limits described in [Threshold Decay and Other Instruction Limits](/attention-limits) — threshold decay, attention dilution, attention sinks, lost-in-the-middle, the Dumb Zone, context rot — aren't bugs you can prompt your way around — they're structural consequences of how softmax attention works (fixed attention mass split across every token, quadratic pairwise cost as the sequence grows). That means the fix isn't "phrase it more carefully so the model prioritizes correctly" — it's controlling what goes into context in the first place, since nothing you say inside an already-overloaded context reliably escapes the effects on it. The sections below map each mechanism from that doc to a concrete practice for working with Claude Code.
+The limits described in [Threshold Decay and Other Instruction Limits](/attention-limits) — threshold decay, attention dilution, attention sinks, lost-in-the-middle, the Dumb Zone, context rot — aren't bugs you can prompt your way around — they're structural consequences of how softmax attention works (fixed attention mass split across every token, quadratic pairwise cost as the sequence grows). That means the fix isn't "phrase it more carefully so the model prioritizes correctly" — it's controlling what goes into context in the first place, since nothing you say inside an already-overloaded context reliably escapes the effects on it. The sections below map each mechanism from that doc to a concrete practice for working with Claude Code, plus how the same principles carry over to Cursor.
 
 ## Keep CLAUDE.md and prompts short
 
@@ -26,8 +26,7 @@ Past roughly 40% of a context window's capacity, compliance and coherence start 
 ❯ /context
   Context Usage
   ⛁ ⛁ ⛁ ⛀ ⛀ ⛁ ⛁ ⛁ ⛀ ⛶   Sonnet 5
-                        67.1k/967k tokens (7%)
-
+    67.1k/967k tokens (7%) <-- % of context window
   Estimated usage by category
   ⛁ System prompt: 9.5k tokens (1.0%)
   ⛁ System tools: 19.7k tokens (2.0%)
@@ -37,6 +36,8 @@ Past roughly 40% of a context window's capacity, compliance and coherence start 
   ⛶ Free space: 866.9k (89.6%)
   ⛝ Autocompact buffer: 33k tokens (3.4%)
 ```
+
+In the above details, the *67.1k/967k tokens (7%)* line is the one that maps to the doc's "40% of context window" — 967k (labeled "Auto-compact window") is the denominator Claude Code uses for that top-line percentage, so it's the same "context window capacity" the Dumb Zone finding refers to.
 
 - **Check `/context` on long or exploratory sessions**, not just when something starts feeling off — by the time drift is noticeable, you're already well past the point where a fresh session would've been cheaper.
 - **Treat 40% usage as the point to actively manage, not the point to panic.** That's well before "the window is full" — it's the threshold where degradation starts, so it's the useful trigger for `/compact` or `/clear`, not the hard ceiling.
@@ -65,6 +66,16 @@ Frontier models top out around 68% compliance at 500 instructions in a single pr
 - **Ask for the constraint that matters for this task, not every constraint that might ever apply.** A prompt trying to pre-empt every possible edge case is the same failure mode as an overlong `CLAUDE.md` — more rules, less compliance with each one.
 - **Split unrelated instructions across turns instead of stacking them in one prompt.** A single message asking for a feature, a refactor, and a style change simultaneously is three-plus instructions competing for the same budget; sequencing them lets each get full attention on its own turn.
 - **If a rule keeps getting silently dropped, that's an omission error, not a wording problem** — per the source finding, high instruction density shifts failures from "followed incorrectly" to "not seen at all." Removing competing instructions fixes that more reliably than rephrasing the dropped one.
+
+## The same principles, in Cursor
+
+The mechanisms don't change by editor — they're properties of the underlying model, not of Claude Code specifically — but Cursor exposes different levers for controlling what lands in context, so the practical advice above maps onto different features.
+
+- **Split `.cursor/rules/*.mdc` into small, scoped files instead of one long rules file.** Each rule file's `globs`/`description` frontmatter controls whether it's attached at all for a given request — a rule scoped to `*.test.ts` never dilutes attention on a request that touches no test files, which a single monolithic rules file can't do. `alwaysApply: true` should be reserved for the handful of rules you'd put at the top of a `CLAUDE.md` — everything else should be scoped so it only enters context when relevant.
+- **Prefer `@file`/`@folder`/`@docs` over `@codebase` when you already know what's relevant.** `@codebase`'s semantic search pulls in whatever it judges relevant, which is convenient but adds tokens you didn't choose and can't easily audit for dilution; naming the specific files puts you back in control of what competes for attention, the same way scoping a subagent's task does in Claude Code.
+- **Start a new chat/composer session per task, the same way `/clear` resets a Claude Code session.** A long-running chat thread keeps every prior turn's context attached indefinitely — Cursor doesn't auto-compact it for you the way Claude Code's `/compact` does, so an old chat re-used across unrelated tasks accumulates rot with no built-in reset.
+- **There's no `/context`-style token meter to check, so use turn count and topic drift as the proxy.** Once a chat thread has wandered across several unrelated changes or grown long enough that you're scrolling to find earlier decisions, treat that as the signal a Claude Code session would give you numerically — it's the same 40%-of-window territory, just without the readout.
+- **Put the rule you'd be angriest to see violated in the shortest, highest-priority rule file** (or as an `alwaysApply` rule), not buried in a long onboarding-style rules doc — attention sinks and lost-in-the-middle apply to whatever gets assembled into the model's context regardless of which editor assembled it.
 
 ## Why this beats fighting it after the fact
 

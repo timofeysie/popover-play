@@ -11,6 +11,7 @@ const notes = [
   { title: "The App Version Error", path: "/notes/app-version", active: true },
   { title: "Working with Markdown", path: "/notes/working-with-markdown", active: true },
   { title: "Context Management", path: "/notes/context-management", active: true },
+  { title: "AbortController", path: "/notes/abort-controller", active: true },
 ];
 
 const exercises = [
