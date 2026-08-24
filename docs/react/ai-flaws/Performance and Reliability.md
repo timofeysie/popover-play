@@ -322,7 +322,7 @@ function Table({
 
 ## Missing resilience
 
-AI optimizes for the literal request — ask for "a fetch call" and that's what you get, with no timeout, no retry, and no boundary to contain a failure. Under real-world network conditions (slow connections, flaky endpoints, transient 5xxs) that turns a single failed request into a broken page instead of a recoverable error.
+AI optimizes for the literal request — ask for "a fetch call" and that's what you get, with no timeout, no retry, and no boundary to contain a failure. Under real-world network conditions (slow connections, flaky endpoints, transient 500 errors) that turns a single failed request into a broken page instead of a recoverable error.
 
 **Example:**
 
@@ -363,7 +363,7 @@ function Profile({ id }: { id: string }) {
 
 - **Name the failure modes you want handled, not just "add resilience."** A bare "fetch the user" prompt makes the no-timeout, no-retry version a legitimate literal reading; "time out after 5s, retry transient failures twice, and show a fallback if it still fails" isn't.
 - **Reach for a data-fetching library (TanStack Query, SWR) instead of hand-rolling timeout/retry/cache logic.** They ship sane resilience defaults — retry, dedupe, cache — so asking for a fetch to go through one usually gets those defaults for free, in a way rolling your own rarely does on the first pass.
-- **Distinguish retryable from non-retryable failures.** Retry network errors and 5xxs; don't retry 4xxs — retrying a 404 or a 401 just repeats a request that was never going to succeed. Naive retry loops tend not to make this distinction unless asked to.
+- **Distinguish retryable from non-retryable failures.** Retry network errors and 500 errors; don't retry 4xxs — retrying a 404 or a 401 just repeats a request that was never going to succeed. Naive retry loops tend not to make this distinction unless asked to.
 - **Wrap anything that can fail with an `<ErrorBoundary>` further up the tree.** A bounded, retried request that still ultimately fails needs somewhere to degrade to — without a boundary, that failure crashes the surrounding page instead of showing a fallback.
 - **Watch for retries applied to mutations without considering idempotency.** Blindly retrying a `POST`/non-idempotent mutation can double-submit; only retry mutations known to be safe to repeat, or dedupe with an idempotency key.
 - **Check this in review by simulating failure, not by reading the diff.** Throttle the network tab or point the endpoint at a 500 and confirm the UI degrades gracefully — the code often looks identical whether or not it actually handles the failure path.
@@ -423,3 +423,16 @@ function Profile({ id }: { id: string }) {
   <Profile id={id} />
 </ErrorBoundary>
 ```
+
+---
+
+## Cheat sheet
+
+| Flaw | Symptom | Fix |
+|---|---|---|
+| [Infinite API loops](#infinite-api-loops) | `useEffect` re-triggers itself, hammering the backend | Always include a dependency array; enforce with `exhaustive-deps` |
+| [Missing debounce on search](#missing-debounce-on-search) | One request per keystroke | Debounce input, cancel in-flight requests, guard against stale responses |
+| [Over-fetching and lack of context](#over-fetching-and-lack-of-context) | Fetches the full dataset to compute something small client-side | Ask for the shape you need (a count/scoped endpoint), not the raw source |
+| [Missing lazy loading](#missing-lazy-loading) | All images load eagerly, even offscreen ones | `loading="lazy"` by default; eager-load only above-the-fold images |
+| [Missing virtualization for large datasets](#missing-virtualization-for-large-datasets) | Plain `.map()` over rows chokes past a few hundred | Virtualize (`react-window`/`react-virtual`); name the expected scale |
+| [Missing resilience](#missing-resilience) | A fetch call has no timeout, retry, or failure boundary | Timeout + retry transient (not 4xx) failures + wrap in an `<ErrorBoundary>` |

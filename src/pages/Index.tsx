@@ -10,6 +10,7 @@ const notes = [
   { title: "Advanced useEffect", path: "/notes/use-effects", active: true },
   { title: "The App Version Error", path: "/notes/app-version", active: true },
   { title: "Working with Markdown", path: "/notes/working-with-markdown", active: true },
+  { title: "Context Management", path: "/notes/context-management", active: true },
 ];
 
 const exercises = [
@@ -58,7 +59,7 @@ const Index = () => {
       {/* Header */}
       <header className="border-b border-border px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Code2 className="w-6 h-6 text-primary" />
+          <Code2 className="hidden sm:block w-6 h-6 text-primary" aria-hidden="true" />
           <h1 className="text-lg font-bold tracking-tight flex items-baseline gap-1.5">
             <span>Code<span className="text-primary">Lab</span></span>
             <span className="text-xs font-normal text-muted-foreground">
@@ -71,7 +72,6 @@ const Index = () => {
             to="/"
             className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
-            Home
           </Link>
           <button
             popoverTarget="notes-navigation"
