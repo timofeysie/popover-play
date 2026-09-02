@@ -7,8 +7,8 @@ export function AttentionDilution() {
       term="Attention Dilution"
       tagline="Attention is a zero-sum budget, not an elastic one."
       provenance="mechanism"
+      chart={<AttentionDilutionChart />}
     >
-      <AttentionDilutionChart />
       <p>
         Softmax attention weights are positive and always sum to <b>1</b>.
         Adding tokens to a prompt doesn't add attention capacity — it splits

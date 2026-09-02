@@ -9,6 +9,7 @@ export { AttentionSinksChart } from "./AttentionSinksChart";
 export { LostInTheMiddle } from "./LostInTheMiddle";
 export { LostInTheMiddleChart } from "./LostInTheMiddleChart";
 export { TheDumbZone } from "./TheDumbZone";
+export { TheDumbZoneChart } from "./TheDumbZoneChart";
 export { ContextRot } from "./ContextRot";
 export { ContextRotChart } from "./ContextRotChart";
 export { RepetitionHack } from "./RepetitionHack";

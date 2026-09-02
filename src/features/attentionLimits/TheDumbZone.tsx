@@ -1,4 +1,5 @@
 import { GlossaryCard } from "./GlossaryCard";
+import { TheDumbZoneChart } from "./TheDumbZoneChart";
 
 export function TheDumbZone() {
   return (
@@ -6,6 +7,7 @@ export function TheDumbZone() {
       term="The Dumb Zone"
       tagline="Past ~40% of the context window, things start to slip."
       provenance="coinage"
+      chart={<TheDumbZoneChart />}
     >
       <p>
         Once a prompt passes roughly <b>40% of a model's context-window

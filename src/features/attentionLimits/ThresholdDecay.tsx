@@ -7,8 +7,8 @@ export function ThresholdDecay() {
       term="Threshold Decay"
       tagline="Near-perfect compliance, then a cliff — not a slope."
       provenance="coinage"
+      chart={<ThresholdDecayChart />}
     >
-      <ThresholdDecayChart />
       <p>
         Instruction-following doesn't degrade gradually as a prompt grows. It
         holds steady — then drops sharply once a tipping point is crossed.

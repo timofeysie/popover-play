@@ -7,8 +7,8 @@ export function AttentionSinks() {
       term="Attention Sinks"
       tagline="The first tokens get outsized attention — regardless of content."
       provenance="established"
+      chart={<AttentionSinksChart />}
     >
-      <AttentionSinksChart />
       <p>
         Initial tokens in a sequence absorb disproportionate attention mass no
         matter what they actually say. Documented in Xiao et al.,{" "}

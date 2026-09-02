@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { BookOpen, ChevronRight } from "lucide-react";
 
 export type GlossaryProvenance =
   | "established"
@@ -25,6 +26,8 @@ interface GlossaryCardProps {
   term: string;
   tagline: string;
   provenance: GlossaryProvenance;
+  chart?: ReactNode;
+  hint?: ReactNode;
   children: ReactNode;
 }
 
@@ -32,6 +35,8 @@ export function GlossaryCard({
   term,
   tagline,
   provenance,
+  chart,
+  hint,
   children,
 }: GlossaryCardProps) {
   return (
@@ -45,8 +50,22 @@ export function GlossaryCard({
         </span>
       </div>
       <p className="text-sm text-muted-foreground italic">{tagline}</p>
-      <div className="text-sm text-foreground/90 leading-relaxed space-y-2">
-        {children}
+      {chart}
+      <div className="space-y-2">
+        <details className="group/description rounded-lg border border-border bg-muted/20 overflow-hidden">
+          <summary className="flex items-center gap-2 list-none cursor-pointer px-4 py-3 text-muted-foreground hover:bg-muted/40 transition-colors [&::-webkit-details-marker]:hidden">
+            <ChevronRight
+              className="w-4 h-4 shrink-0 text-primary transition-transform group-open/description:rotate-90"
+              aria-hidden
+            />
+            <BookOpen className="w-4 h-4 shrink-0 text-primary" aria-hidden />
+            <span className="font-medium text-foreground">Description</span>
+          </summary>
+          <div className="px-4 pb-4 pt-3 text-sm text-foreground/90 leading-relaxed space-y-2 border-t border-border">
+            {children}
+          </div>
+        </details>
+        {hint}
       </div>
     </section>
   );

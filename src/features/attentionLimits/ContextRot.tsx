@@ -7,8 +7,8 @@ export function ContextRot() {
       term="Context Rot"
       tagline="Degradation is a slope, not a cliff at the token limit."
       provenance="mechanism"
+      chart={<ContextRotChart />}
     >
-      <ContextRotChart />
       <p>
         A real, measurable effect (see e.g. Chroma's long-context evals) —
         but degradation doesn't only appear once you approach a model's
