@@ -8,6 +8,36 @@ export function AttentionDilution() {
       tagline="Attention is a zero-sum budget, not an elastic one."
       provenance="mechanism"
       chart={<AttentionDilutionChart />}
+      mitigation={
+        <>
+          <p>
+            <b>Reduce total tokens and instructions — don't just reorganize
+            them.</b> Since the attention budget is fixed and sums to 1, the
+            only real lever is spending less of it in the first place:
+            shorter prompts, fewer standing rules, less boilerplate.
+          </p>
+          <p>
+            <b>Prune whenever you add.</b> When a new instruction goes into a
+            prompt or <code>CLAUDE.md</code>, look for a stale or redundant
+            one to remove at the same time — treat the file's size as a
+            budget, not a running log.
+          </p>
+          <p>
+            <b>Prefer fewer, higher-level rules over many granular ones.</b>{" "}
+            One broad instruction ("always validate user input") competes for
+            the same budget as five narrow ones, but only spends one line of
+            it.
+          </p>
+          <p>
+            This is the mechanism underneath{" "}
+            <span className="text-code-tag">threshold decay</span>'s
+            instruction-count cliff and{" "}
+            <span className="text-code-keyword">attention sinks</span>'
+            advice to keep the run-up to a priority instruction short — both
+            are attention dilution showing up under a different name.
+          </p>
+        </>
+      }
     >
       <p>
         Softmax attention weights are positive and always sum to <b>1</b>.

@@ -52,6 +52,16 @@ those instructions are written.
 - **Context rot:** degradation isn't a cliff that only appears near the context limit — it happens incrementally at every length increase. A 1M-token-window model can already show rot at 50K tokens; a bigger window raises the ceiling, it doesn't remove the slope.
 - **The repetition hack (mitigation):** repeating the instruction block *after* the bulk of the context (not just before it) gives that second copy full attention over everything preceding it — the workaround people use to fight "lost in the middle."
 
+## Mitigation strategy
+
+Threshold decay means compliance is near-perfect right up until it isn't — so the goal is staying on the flat part of the curve, not just "adding more instructions carefully."
+
+- **Budget instruction count, not just token count.** Reasoning models held reliable through roughly 100–250 instructions before falling off; treat that range as a hard ceiling for a single prompt/config file rather than a soft guideline you can eyeball.
+- **Cut before you add.** This is attention dilution applied to authoring: every rule dilutes attention to every other rule, so when a new instruction goes into a prompt or `CLAUDE.md`/`AGENTS.md`, look for a stale or redundant one to remove at the same time — aim for net-neutral growth, not net-additive.
+- **Front-load and reinforce, don't bury.** Attention sinks mean early tokens get disproportionate weight regardless of content, so put the instructions you most need followed at the very top. For anything critical in a long document, repeat it again near the end (the repetition hack above) — that's the direct countermeasure to lost in the middle, since the middle is where omission errors concentrate.
+- **Prefer fewer, higher-level principles over many granular rules.** "Always validate user input" survives the cliff better than five separate rules for five input types, because it's one instruction competing for attention instead of five.
+- **Test instruction-following compliance instead of assuming it.** Omission failures are silent — the model doesn't flag that it skipped rule #47, it just doesn't follow it. Periodically audit whether instructions past the "safe zone" are still being honored, especially after a config file has grown past a page or two.
+
 ## Is this transformer-specific? What's it called in ML circles?
 
 Splitting the terms by provenance:

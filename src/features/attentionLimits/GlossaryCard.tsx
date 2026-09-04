@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { BookOpen, ChevronRight } from "lucide-react";
+import { BookOpen, ChevronRight, ShieldCheck } from "lucide-react";
 
 export type GlossaryProvenance =
   | "established"
@@ -28,6 +28,7 @@ interface GlossaryCardProps {
   provenance: GlossaryProvenance;
   chart?: ReactNode;
   hint?: ReactNode;
+  mitigation?: ReactNode;
   children: ReactNode;
 }
 
@@ -37,6 +38,7 @@ export function GlossaryCard({
   provenance,
   chart,
   hint,
+  mitigation,
   children,
 }: GlossaryCardProps) {
   return (
@@ -65,6 +67,23 @@ export function GlossaryCard({
             {children}
           </div>
         </details>
+        {mitigation && (
+          <details className="group/mitigation rounded-lg border border-code-comment/30 bg-code-comment/5 overflow-hidden">
+            <summary className="flex items-center gap-2 list-none cursor-pointer px-4 py-3 text-code-comment hover:bg-code-comment/10 transition-colors [&::-webkit-details-marker]:hidden">
+              <ChevronRight
+                className="w-4 h-4 shrink-0 text-code-comment transition-transform group-open/mitigation:rotate-90"
+                aria-hidden
+              />
+              <ShieldCheck className="w-4 h-4 shrink-0 text-code-comment" aria-hidden />
+              <span className="font-medium text-foreground">
+                Mitigation Strategy
+              </span>
+            </summary>
+            <div className="px-4 pb-4 pt-3 text-sm text-foreground/90 leading-relaxed space-y-2 border-t border-code-comment/20">
+              {mitigation}
+            </div>
+          </details>
+        )}
         {hint}
       </div>
     </section>
