@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,6 +18,8 @@ import SlidingWindowMaximum from "./pages/SlidingWindowMaximum";
 import JavascriptGotchas from "./pages/JavascriptGotchas";
 import MathRefresher from "./pages/MathRefresher";
 import AttentionLimits from "./pages/AttentionLimits";
+// Lazy-loaded: pulls in Phaser (~850kB gzipped), kept out of the main bundle.
+const LandGrab = lazy(() => import("./pages/LandGrab"));
 import MccmWizardShell from "./pages/MccmWizardShell";
 import MccmCargoStep from "./pages/MccmCargoStep";
 import MccmDestinationStep from "./pages/MccmDestinationStep";
@@ -55,6 +58,14 @@ const App = () => (
             <Route path="javascript-gotchas" element={<JavascriptGotchas />} />
             <Route path="math-refresher" element={<MathRefresher />} />
             <Route path="attention-limits" element={<AttentionLimits />} />
+            <Route
+              path="land-grab"
+              element={
+                <Suspense fallback={<div className="px-6 py-12 text-muted-foreground">Loading…</div>}>
+                  <LandGrab />
+                </Suspense>
+              }
+            />
             <Route path="mccm">
               <Route index element={<Navigate to="cargo" replace />} />
               <Route element={<MccmWizardShell />}>

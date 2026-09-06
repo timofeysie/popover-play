@@ -28,6 +28,7 @@ const exercises = [
   { title: "Math Refresher: Quadratic Polynomials", path: "/math-refresher", active: true },
   { title: "Threshold Decay & Attention Limits", path: "/attention-limits", active: true },
   { title: "Mission Control Cargo Manifest (MCCM)", path: "/mccm", active: true },
+  { title: "Land Grab", path: "/land-grab", active: true },
   { title: "Queue Implementation", path: "/queue-implementation", active: false },
 ];
 

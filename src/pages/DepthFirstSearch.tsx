@@ -1,4 +1,5 @@
 import { useRef, useEffect } from "react";
+import { Link } from "react-router-dom";
 import * as d3 from "d3";
 import { BookOpen, Zap, GitBranch, ChevronRight, ExternalLink, ListChecks, Plus, Minus, Lightbulb, Code2, BarChart2 } from "lucide-react";
 import { DfsPreOrderDemo, NumberOfIslandsDemo, type TreeNode } from "@/features/depthFirstSearch";
@@ -396,6 +397,14 @@ const DepthFirstSearch = () => {
               <DfsPreOrderDemo />
               <NumberOfIslandsDemo />
             </div>
+            <p className="text-sm text-muted-foreground mt-4">
+              Want to see this algorithm doing real work instead of just visiting cells?{" "}
+              <Link to="/land-grab" className="text-primary hover:underline font-medium">
+                Land Grab
+              </Link>{" "}
+              is a Paper.io-style territory game where the same border-flood-fill and connected-component logic
+              <em> is</em> the capture and cut mechanic.
+            </p>
           </div>
         </details>
       </section>
