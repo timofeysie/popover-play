@@ -1,26 +1,29 @@
 # History of the Land Grab Genre
 
-Land Grab's core loop — draw a trail outside your territory, close the loop to claim
-the enclosed area, get eliminated if anyone cuts your trail first — isn't new. It's a
-45-year-old arcade idea that keeps getting re-skinned as hardware and networks change.
-This is a brief tour of that lineage, for context on why the DFS/BFS solution from
+Land Grab merges two mechanics that actually come from two separate 45-year-old arcade
+lineages: **claim territory by enclosing it** (the Qix family) and **your trail is a
+hazard — touch any trail and you're dead** (the Blockade/Tron family). Paper.io and its
+web `.io` cousins are where these two lineages actually merged; Land Grab inherits both
+halves. This is a brief tour of each, for context on why the DFS/BFS solution from
 [`docs/problems/Number-of-Islands.md`](../../../docs/problems/Number-of-Islands.md)
-mapped onto a game so cleanly: this genre has always been a flood-fill/connected-
-components problem wearing a game's clothing.
+mapped onto a game so cleanly: the enclosure half of this genre has always been a
+flood-fill/connected-components problem wearing a game's clothing.
 
-## The arcade originator: Qix (1981)
+## Lineage 1: claim territory by enclosing it
 
-**Qix**, released by Taito, is the usual starting point for this family tree. The
-player moves a marker along the edges of a rectangular field and drags a line ("Stix")
-out into open space; completing the line seals off a section of the field, which fills
-in as claimed territory. Two threats punish slowness: the **Qix** itself, an erratic,
-color-shifting line-shape that destroys you if it touches your unfinished line, and
-**Sparx**, sentries that patrol the field's claimed/unclaimed boundary looking for an
-unfinished line to cut. Clear a set percentage of the field to advance. Nearly every
-mechanic in this doc — claim-by-enclosure, death-by-having-your-line-cut, a
-percentage-of-board win condition — traces back to this one game.
+### Qix (1981) — the arcade originator
 
-## Clones and reinventions (1980s–90s)
+**Qix**, released by Taito, is the usual starting point for the "draw a line, seal off
+a region" side of the family. The player moves a marker along the edges of a
+rectangular field and drags a line ("Stix") out into open space; completing the line
+seals off a section of the field, which fills in as claimed territory. Two threats
+punish slowness: the **Qix** itself, an erratic, color-shifting line-shape that
+destroys you if it touches your unfinished line, and **Sparx**, sentries that patrol
+the claimed/unclaimed boundary looking for an unfinished line to cut. Clear a set
+percentage of the field to advance. Claim-by-enclosure, death-by-having-your-line-cut,
+a percentage-of-board win condition — all of it traces back to this one game.
+
+### Clones and reinventions (1980s–90s)
 
 - **Xonix** (1984) — a widely bootlegged game of Soviet/Eastern Bloc origin (its
   authorship is murky; it circulated on countless unofficial ports) that put its own
@@ -47,34 +50,62 @@ percentage-of-board win condition — traces back to this one game.
   rounds between phases, no line-drawing/cutting mechanic. Worth knowing as a
   contemporary "claim and defend territory" game from the same arcade era.
 
-## The io-game/hyper-casual revival (2016–2018)
+## Lineage 2: your trail is a hazard
+
+### Blockade (1976) and Tron (1982)
+
+Six years before Qix, **Blockade** (Gremlin Industries, 1976) established a different
+idea entirely: two players each move a piece that leaves a solid, permanent wall behind
+it, and touching *any* wall — yours, your opponent's, or the arena's edge — ends your
+game immediately. No enclosure, no scoring by area; the trail itself is a hazard the
+instant it exists. It's the direct ancestor of both the "Snake"/"Nibbles" genre (where
+your own trail is a growing body you must not run into) and, six years later, **Tron**
+(Bally Midway, 1982) — the arcade cabinet tied to Disney's film, whose "Light Cycles"
+mode put two riders on a grid leaving solid walls behind them, the loser being whoever
+crashes first. Tron didn't invent the trail-as-wall idea, but it's the version that
+stuck in pop culture and gave the mechanic its enduring name: "light cycles."
+
+### Keeping the light-cycle duel alive online
+
+- **Achtung, die Kurve!** (a.k.a. **Curve Fever** / **Zatacka**, 1995, German
+  freeware) — real-time multiplayer light-cycle dueling with a twist: each trail has
+  random gaps you can slip through. Widely cited as the bridge between arcade Tron and
+  the browser-multiplayer "curve" games that followed it, spawning a long line of
+  clones (many now literally named `curvefever.io`-style).
+- **Armagetron Advanced** (2001) — an open-source, networked 3D Tron light-cycle clone
+  that kept dedicated online play going through the 2000s.
+
+## Where the two lineages merged: the io-game/hyper-casual revival (2016–2018)
 
 After **Agar.io** (2015) and **Slither.io** (2016) proved real-time multiplayer browser
-games could go viral, several developers rebuilt the Qix/Xonix enclosure mechanic as
-head-to-head PvP instead of a single-player-vs-the-board puzzle:
+games could go viral, several developers fused Qix/Xonix's *enclose territory* idea
+with Blockade/Tron's *trail is instant death* idea into one PvP mechanic — which is
+exactly Land Grab's rule set:
 
 - **Splix.io** — a browser `.io` game with continuous grid movement, a visible trail
   the moment you leave your own territory, and elimination if any other player's head
-  touches your trail — functionally Xonix's "cut the trail" idea made explicitly
-  multiplayer.
-- **Paper.io** / **Paper.io 2** — the mobile hit that brought this mechanic to a mass
-  audience during the 2017–2018 hyper-casual boom (published under Voodoo's
+  touches your trail: enclosure-to-claim from Qix, trail-crossing-kills from Tron.
+- **Paper.io** / **Paper.io 2** — the mobile hit that brought this fused mechanic to a
+  mass audience during the 2017–2018 hyper-casual boom (published under Voodoo's
   hyper-casual label), first as single-player-vs-bots, later adding real multiplayer.
   This is the game Land Grab is most directly modeled on, and the one namechecked in
   the [design doc](../../../docs/land-grab.md).
 - **Territorial.io** — a related but distinct branch: large-scale, many-player
   territorial conquest by attrition rather than trail-drawing, closer to a real-time
-  Risk than to Qix, but sharing the "claim contiguous grid cells" core.
+  Risk than to Qix or Tron, but sharing the "claim contiguous grid cells" core.
 
 Paper.io's popularity in turn spawned a long tail of near-identical clones across app
-stores — a genre cycle (arcade original → home clones → mobile mass-market clone) this
-family of games has now been through twice.
+stores — a genre cycle (arcade original → home clones → mobile mass-market clone) both
+of these lineages have now been through at least twice.
 
 ## The throughline
 
-Every generation of this genre is solving the same problem: **given a boundary someone
-just drew, which cells are enclosed?** That's a flood fill from the outside in, exactly
-`floodFromBorder` in [`grid.ts`](./grid.ts) — and "did cutting through the middle of my
-territory split it into pieces?" is `numIslands` again, restricted to one player's
-cells, exactly [`splitResolution.ts`](./splitResolution.ts). The graphics and the
-threat model changed six times over 45 years; the graph algorithm underneath didn't.
+Every generation of the *enclosure* lineage is solving the same problem: **given a
+boundary someone just drew, which cells are enclosed?** That's a flood fill from the
+outside in, exactly `floodFromBorder` in [`grid.ts`](./grid.ts) — and "did cutting
+through the middle of my territory split it into pieces?" is `numIslands` again,
+restricted to one player's cells, exactly [`splitResolution.ts`](./splitResolution.ts).
+The *trail-hazard* lineage contributes Land Grab's other rule for free: a trail cell is
+just a cell tagged "instant death for anyone who steps on it," no algorithm required.
+The graphics and the threat model changed across ports and decades; the graph algorithm
+underneath the enclosure half never did.

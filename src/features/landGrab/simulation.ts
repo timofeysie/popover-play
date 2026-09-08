@@ -1,4 +1,4 @@
-import { countOwnedCells, createEmptyGrid, findOpenSpawn, placeBase, resolveCapture, type CellState } from "./grid";
+import { countOwnedCells, createEmptyGrid, findOpenSpawn, isAreaFree, placeBase, resolveCapture, type CellState } from "./grid";
 import { resolveTerritorySplit } from "./splitResolution";
 import type { Direction, Vec2 } from "./types";
 
@@ -116,8 +116,7 @@ function eliminate(grid: CellState[][], player: PlayerState, tick: number): Cell
   return next;
 }
 
-function respawnPlayer(grid: CellState[][], player: PlayerState): CellState[][] {
-  const spawn = findOpenSpawn(grid, player.home, BASE_RADIUS);
+function respawnPlayer(grid: CellState[][], player: PlayerState, spawn: Vec2): CellState[][] {
   const next = placeBase(grid, spawn, player.id, BASE_RADIUS);
   player.home = spawn;
   player.head = spawn;
@@ -139,9 +138,13 @@ function decideBotFacing(state: GameState, player: PlayerState): Direction {
 
   function score(dir: Direction): number {
     const next = { row: player.head.row + DELTA[dir].row, col: player.head.col + DELTA[dir].col };
-    if (!inBounds(state, next)) return -Infinity;
+    // Board edge is just a wall now (the mover holds position), so it's merely
+    // wasteful, not fatal — rank it well below any real move but above suicide.
+    if (!inBounds(state, next)) return -1000;
     const cell = state.grid[next.row][next.col];
-    if (cell.kind === "trail" && cell.playerId === player.id) return -Infinity;
+    // Crossing our own trail now closes the loop and banks the capture instead
+    // of killing us — worth it once the trail is long, wasteful when it's short.
+    if (cell.kind === "trail" && cell.playerId === player.id) return homesick ? 1 : -20;
     const distanceToHome = Math.abs(next.row - player.home.row) + Math.abs(next.col - player.home.col);
     if (homesick) return -distanceToHome;
     const preferUnclaimed = cell.kind === "neutral" ? 2 : 0;
@@ -168,9 +171,12 @@ export function stepGame(state: GameState): GameState {
   const nextTick = state.tick + 1;
 
   for (const player of Object.values(players)) {
-    if (!player.alive && player.respawnAt !== null && player.respawnAt <= state.tick) {
-      grid = respawnPlayer(grid, player);
-    }
+    if (player.alive || player.respawnAt === null || player.respawnAt > state.tick) continue;
+    // Hold the player out until the board actually has a clear 3x3 pocket for a
+    // fresh base; otherwise leave respawnAt as-is and try again next tick.
+    const spawn = findOpenSpawn(grid, player.home, BASE_RADIUS);
+    if (!isAreaFree(grid, spawn, BASE_RADIUS)) continue;
+    grid = respawnPlayer(grid, player, spawn);
   }
 
   const scratchState: GameState = { ...state, grid, players };
@@ -191,36 +197,39 @@ export function stepGame(state: GameState): GameState {
     const next: Vec2 = { row: player.head.row + DELTA[facing].row, col: player.head.col + DELTA[facing].col };
 
     if (!inBounds(state, next)) {
-      grid = eliminate(grid, player, nextTick);
+      // The board edge is a wall, not a cliff: hold position for this tick. The
+      // player's facing now points into the wall, so a human keeps sitting here
+      // until they steer somewhere that stays on the board; a bot re-picks a
+      // direction on the next tick.
       continue;
     }
 
     let targetCell = grid[next.row][next.col];
 
-    if (targetCell.kind === "trail") {
-      if (targetCell.playerId === player.id) {
-        grid = eliminate(grid, player, nextTick);
-        continue;
-      }
+    // Running into your own live trail is not a death — it pinches the loop
+    // closed. Anyone else's trail is still an elimination.
+    const closingOnOwnTrail = targetCell.kind === "trail" && targetCell.playerId === player.id;
+
+    if (targetCell.kind === "trail" && targetCell.playerId !== player.id) {
       const victim = players[targetCell.playerId];
       grid = eliminate(grid, victim, nextTick);
       player.kills += 1;
       targetCell = grid[next.row][next.col]; // now neutral
     }
 
-    if (targetCell.kind === "territory" && targetCell.playerId === player.id) {
-      if (player.trail.length === 0) {
-        player.head = next;
-      } else {
-        grid = resolveCapture(grid, player.id);
-        player.trail = [];
-        player.head = next;
-        for (const otherId of state.playerOrder) {
-          if (otherId === player.id) continue;
-          const other = players[otherId];
-          grid = resolveTerritorySplit(grid, other.id, other.home);
-        }
+    const reenteringOwnLand = targetCell.kind === "territory" && targetCell.playerId === player.id;
+
+    if (player.trail.length > 0 && (closingOnOwnTrail || reenteringOwnLand)) {
+      grid = resolveCapture(grid, player.id);
+      player.trail = [];
+      player.head = next;
+      for (const otherId of state.playerOrder) {
+        if (otherId === player.id) continue;
+        const other = players[otherId];
+        grid = resolveTerritorySplit(grid, other.id, other.home);
       }
+    } else if (reenteringOwnLand) {
+      player.head = next;
     } else {
       const row = grid[next.row].slice();
       row[next.col] = { kind: "trail", playerId: player.id };

@@ -34,15 +34,40 @@ describe("stepGame — a full capture loop", () => {
     expect(state.grid[2][4]).toEqual({ kind: "territory", playerId: "p1" });
   });
 
-  it("walking off the grid eliminates the player and schedules a respawn", () => {
+  it("running into your own trail closes the loop instead of eliminating you", () => {
+    let state = createInitialGameState(7, 7, [HUMAN]);
+    // Home base is rows 1-3 / cols 1-3. Trace a trail out of it and back onto
+    // an earlier trail cell at (2,4) to pinch the loop shut.
+    const path: Direction[] = ["right", "right", "right", "up", "up", "left", "down", "down"];
+    for (const direction of path) {
+      setPlayerFacing(state, "p1", direction);
+      state = stepGame(state);
+    }
+
+    const player = state.players.p1;
+    expect(player.alive).toBe(true);
+    expect(player.respawnAt).toBeNull();
+    expect(player.trail).toEqual([]); // loop closed, trail consumed
+    expect(player.head).toEqual({ row: 2, col: 4 });
+    expect(player.ownedCount).toBe(15); // 9 base + 6 trail cells turned territory
+    expect(state.grid[0][5]).toEqual({ kind: "territory", playerId: "p1" });
+  });
+
+  it("walking into the board edge holds the player still instead of eliminating them", () => {
     let state = createInitialGameState(5, 5, [HUMAN]);
-    // Home lands at (2,2) on a 5x5 board; three steps up reaches row -1.
-    for (let i = 0; i < 3; i++) {
+    // Home lands at (2,2) on a 5x5 board; two steps up reaches the top row (0,2).
+    for (let i = 0; i < 5; i++) {
       setPlayerFacing(state, "p1", "up");
       state = stepGame(state);
     }
-    expect(state.players.p1.alive).toBe(false);
-    expect(state.players.p1.respawnAt).not.toBeNull();
+    expect(state.players.p1.alive).toBe(true);
+    expect(state.players.p1.respawnAt).toBeNull();
+    expect(state.players.p1.head).toEqual({ row: 0, col: 2 });
+
+    // Steering away from the wall lets them move again.
+    setPlayerFacing(state, "p1", "right");
+    state = stepGame(state);
+    expect(state.players.p1.head).toEqual({ row: 0, col: 3 });
   });
 });
 
