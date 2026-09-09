@@ -1,17 +1,32 @@
 import { countOwnedCells, createEmptyGrid, findOpenSpawn, isAreaFree, placeBase, resolveCapture, type CellState } from "./grid";
 import { resolveTerritorySplit } from "./splitResolution";
+import { cloneProfile, DEFAULT_BOT_PROFILE, type BotProfile } from "./botProfile";
 import type { Direction, Vec2 } from "./types";
 
 export const BASE_RADIUS = 1;
 export const RESPAWN_DELAY_TICKS = 12;
-export const BOT_HOMESICK_TRAIL_LENGTH = 9;
+/** @deprecated per-bot now: see `BotProfile.homesickTrailLength`. Kept as the default. */
+export const BOT_HOMESICK_TRAIL_LENGTH = DEFAULT_BOT_PROFILE.homesickTrailLength;
 export const TICK_MS = 160;
+
+/** Match-level knobs that aren't tied to a single player. */
+export interface GameRules {
+  respawnDelayTicks: number;
+}
+
+export const DEFAULT_GAME_RULES: GameRules = {
+  respawnDelayTicks: RESPAWN_DELAY_TICKS,
+};
 
 export interface PlayerConfig {
   id: string;
   label: string;
   color: number;
   isBot: boolean;
+  /** Starting decision parameters; defaults to `DEFAULT_BOT_PROFILE` when omitted. */
+  profile?: BotProfile;
+  /** Drive a non-bot player with `decideBotFacing` from tick 1. */
+  autopilot?: boolean;
 }
 
 export interface PlayerState extends PlayerConfig {
@@ -26,6 +41,10 @@ export interface PlayerState extends PlayerConfig {
   kills: number;
   /** Bots move every tick from the start; a human sits still at home until their first key press. */
   hasStarted: boolean;
+  /** The decision parameters this player's moves are scored against (used when a bot or on autopilot). */
+  profile: BotProfile;
+  /** True for bots, or a human whose autopilot toggle is on. */
+  autopilot: boolean;
 }
 
 export interface GameState {
@@ -35,6 +54,7 @@ export interface GameState {
   players: Record<string, PlayerState>;
   playerOrder: string[];
   tick: number;
+  rules: GameRules;
 }
 
 const DELTA: Record<Direction, Vec2> = {
@@ -61,7 +81,12 @@ function startingSpots(rowCount: number, colCount: number, count: number): Vec2[
   return corners.slice(0, count);
 }
 
-export function createInitialGameState(rowCount: number, colCount: number, configs: PlayerConfig[]): GameState {
+export function createInitialGameState(
+  rowCount: number,
+  colCount: number,
+  configs: PlayerConfig[],
+  rules?: Partial<GameRules>,
+): GameState {
   let grid = createEmptyGrid(rowCount, colCount);
   const spots = startingSpots(rowCount, colCount, configs.length);
   const players: Record<string, PlayerState> = {};
@@ -70,8 +95,11 @@ export function createInitialGameState(rowCount: number, colCount: number, confi
   configs.forEach((config, index) => {
     const home = spots[index] ?? findOpenSpawn(grid, { row: Math.floor(rowCount / 2), col: Math.floor(colCount / 2) });
     grid = placeBase(grid, home, config.id, BASE_RADIUS);
+    const autopilot = config.autopilot ?? false;
     players[config.id] = {
       ...config,
+      profile: cloneProfile(config.profile ?? DEFAULT_BOT_PROFILE),
+      autopilot,
       alive: true,
       home,
       head: home,
@@ -81,7 +109,7 @@ export function createInitialGameState(rowCount: number, colCount: number, confi
       ownedCount: 0,
       respawnAt: null,
       kills: 0,
-      hasStarted: config.isBot,
+      hasStarted: config.isBot || autopilot,
     };
   });
 
@@ -89,7 +117,15 @@ export function createInitialGameState(rowCount: number, colCount: number, confi
     player.ownedCount = countOwnedCells(grid, player.id);
   }
 
-  return { rowCount, colCount, grid, players, playerOrder, tick: 0 };
+  return {
+    rowCount,
+    colCount,
+    grid,
+    players,
+    playerOrder,
+    tick: 0,
+    rules: { ...DEFAULT_GAME_RULES, ...rules },
+  };
 }
 
 export function setPlayerFacing(state: GameState, playerId: string, direction: Direction): void {
@@ -101,7 +137,7 @@ export function setPlayerFacing(state: GameState, playerId: string, direction: D
   player.hasStarted = true;
 }
 
-function eliminate(grid: CellState[][], player: PlayerState, tick: number): CellState[][] {
+function eliminate(grid: CellState[][], player: PlayerState, tick: number, respawnDelay: number): CellState[][] {
   let next = grid;
   if (player.trail.length > 0) {
     next = grid.map((row) => row.slice());
@@ -112,7 +148,7 @@ function eliminate(grid: CellState[][], player: PlayerState, tick: number): Cell
   }
   player.alive = false;
   player.trail = [];
-  player.respawnAt = tick + RESPAWN_DELAY_TICKS;
+  player.respawnAt = tick + respawnDelay;
   return next;
 }
 
@@ -124,7 +160,7 @@ function respawnPlayer(grid: CellState[][], player: PlayerState, spawn: Vec2): C
   player.queuedFacing = null;
   player.alive = true;
   player.respawnAt = null;
-  player.hasStarted = player.isBot;
+  player.hasStarted = player.isBot || player.autopilot;
   return next;
 }
 
@@ -133,22 +169,23 @@ function inBounds(state: GameState, cell: Vec2): boolean {
 }
 
 function decideBotFacing(state: GameState, player: PlayerState): Direction {
+  const p = player.profile;
   const candidates = ALL_DIRECTIONS.filter((d) => d !== OPPOSITE[player.facing] || player.trail.length === 0);
-  const homesick = player.trail.length >= BOT_HOMESICK_TRAIL_LENGTH;
+  const homesick = player.trail.length >= p.homesickTrailLength;
 
   function score(dir: Direction): number {
     const next = { row: player.head.row + DELTA[dir].row, col: player.head.col + DELTA[dir].col };
     // Board edge is just a wall now (the mover holds position), so it's merely
     // wasteful, not fatal — rank it well below any real move but above suicide.
-    if (!inBounds(state, next)) return -1000;
+    if (!inBounds(state, next)) return p.offBoardPenalty;
     const cell = state.grid[next.row][next.col];
     // Crossing our own trail now closes the loop and banks the capture instead
     // of killing us — worth it once the trail is long, wasteful when it's short.
-    if (cell.kind === "trail" && cell.playerId === player.id) return homesick ? 1 : -20;
+    if (cell.kind === "trail" && cell.playerId === player.id) return homesick ? p.closeLoopReward : p.earlyLoopPenalty;
     const distanceToHome = Math.abs(next.row - player.home.row) + Math.abs(next.col - player.home.col);
     if (homesick) return -distanceToHome;
-    const preferUnclaimed = cell.kind === "neutral" ? 2 : 0;
-    return preferUnclaimed - distanceToHome * 0.01 + Math.random() * 0.5;
+    const preferUnclaimed = cell.kind === "neutral" ? p.neutralBonus : 0;
+    return preferUnclaimed - distanceToHome * p.homePull + Math.random() * p.jitter;
   }
 
   let best: Direction = candidates[0] ?? player.facing;
@@ -165,10 +202,12 @@ function decideBotFacing(state: GameState, player: PlayerState): Direction {
 
 export function stepGame(state: GameState): GameState {
   let grid = state.grid;
+  const rules = state.rules ?? DEFAULT_GAME_RULES;
   const players: Record<string, PlayerState> = {};
   for (const [id, p] of Object.entries(state.players)) players[id] = { ...p, trail: [...p.trail] };
 
   const nextTick = state.tick + 1;
+  let eliminationOccurred = false;
 
   for (const player of Object.values(players)) {
     if (player.alive || player.respawnAt === null || player.respawnAt > state.tick) continue;
@@ -181,7 +220,9 @@ export function stepGame(state: GameState): GameState {
 
   const scratchState: GameState = { ...state, grid, players };
   for (const player of Object.values(players)) {
-    if (player.alive && player.isBot) {
+    if (player.alive && (player.isBot || player.autopilot)) {
+      // Autopilot skips the human start gate — a driven boat moves from tick 1.
+      player.hasStarted = true;
       player.queuedFacing = decideBotFacing(scratchState, player);
     }
   }
@@ -212,8 +253,9 @@ export function stepGame(state: GameState): GameState {
 
     if (targetCell.kind === "trail" && targetCell.playerId !== player.id) {
       const victim = players[targetCell.playerId];
-      grid = eliminate(grid, victim, nextTick);
+      grid = eliminate(grid, victim, nextTick, rules.respawnDelayTicks);
       player.kills += 1;
+      eliminationOccurred = true;
       targetCell = grid[next.row][next.col]; // now neutral
     }
 
@@ -226,7 +268,7 @@ export function stepGame(state: GameState): GameState {
       for (const otherId of state.playerOrder) {
         if (otherId === player.id) continue;
         const other = players[otherId];
-        grid = resolveTerritorySplit(grid, other.id, other.home);
+        grid = resolveTerritorySplit(grid, other.id, [other.head, other.home]);
       }
     } else if (reenteringOwnLand) {
       player.head = next;
@@ -240,9 +282,21 @@ export function stepGame(state: GameState): GameState {
     }
   }
 
+  if (eliminationOccurred) {
+    // A kill wipes the victim's trail back to neutral. If that trail had been
+    // plowed straight through another player's territory (enemy land is fair
+    // game to trail across), those cells are now a neutral channel that can
+    // leave part of that territory cut off from its base — the same split a
+    // capture causes, and never otherwise resolved because no loop closed.
+    for (const id of state.playerOrder) {
+      const other = players[id];
+      grid = resolveTerritorySplit(grid, other.id, [other.head, other.home]);
+    }
+  }
+
   for (const player of Object.values(players)) {
     player.ownedCount = countOwnedCells(grid, player.id);
   }
 
-  return { rowCount: state.rowCount, colCount: state.colCount, grid, players, playerOrder: state.playerOrder, tick: nextTick };
+  return { rowCount: state.rowCount, colCount: state.colCount, grid, players, playerOrder: state.playerOrder, tick: nextTick, rules };
 }

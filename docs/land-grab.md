@@ -10,6 +10,7 @@ counting *are* the capture and elimination logic, not just a visualization.
 
 - [Theme](#theme)
 - [Core loop](#core-loop)
+- [Implemented rules (Phase 0 demo)](#implemented-rules-phase-0-demo)
 - [Algorithm mapping — this is the point of the project](#algorithm-mapping--this-is-the-point-of-the-project)
 - [Grid & movement model](#grid--movement-model)
 - [Elimination rules](#elimination-rules)
@@ -45,6 +46,131 @@ the four orthogonal neighbors.
 5. Moving onto **any trail cell** (yours or an opponent's) **eliminates** you (see
    [Elimination rules](#elimination-rules)).
 6. Score = total owned cell count. Optional match end: time limit or last-player-standing.
+
+## Implemented rules (Phase 0 demo)
+
+This section documents what `src/features/landGrab/` actually does today: a local,
+single-machine "you vs. three bots" prototype. Where it differs from the
+[Core loop](#core-loop) and [Elimination rules](#elimination-rules) written elsewhere in
+this plan, those are the older intent and **this section is the source of truth**.
+
+### Board & players
+
+- Rectangular grid of cells, each `neutral`, `territory(playerId)`, or `trail(playerId)`.
+  The demo defaults to **16 rows × 24 columns**. A full-screen toggle rebuilds the board
+  large enough to fill the browser window; because the cell count changes, toggling
+  **restarts the match**.
+- **Four players:** *You* (cyan, keyboard-controlled) plus three bots (red, yellow,
+  green). All four obey identical rules — the only difference is who chooses the moves.
+- Everyone starts alive with a solid **3×3 territory base** (`BASE_RADIUS = 1`). Bases
+  1–4 are placed in the four corners, inset from the edges by
+  `max(2, floor(rows / 5))` rows and `max(2, floor(cols / 5))` columns. A hypothetical
+  5th+ player falls back to a free 3×3 found by scanning outward from board centre.
+- **Score** is your current territory-cell count. The leaderboard lists all players
+  sorted by score, highest first (a right-hand panel on viewports ≥ 1400 px, otherwise
+  an inline row under the board).
+
+### Turn & movement
+
+- The simulation advances on a fixed tick, `TICK_MS = 160` (~6 ticks/second).
+- Each tick, every player that is **alive and has started** moves exactly one cell in its
+  facing direction — up, down, left, or right. No diagonals; no voluntarily standing
+  still; never more than one cell per tick.
+- **Input is buffered.** A key press (you) or a bot's decision sets a *queued* facing
+  that takes effect on the next tick. Only the most recent queued turn is kept.
+- **No 180° flip onto your own wake.** A reversal straight back the way you came is
+  ignored while you have a live trail.
+- **Human start gate.** Your boat sits on its base and does not move until your first
+  Arrow/WASD press. Bots start moving on tick 1. After a respawn the gate re-arms for
+  you (bots resume immediately).
+- Direction inputs while you are dead are ignored.
+
+### What happens when you move onto a cell
+
+Resolved player-by-player in a fixed order each tick:
+
+| Target cell | Result |
+| --- | --- |
+| **Neutral** | Painted as your trail; you advance onto it. |
+| **Your own territory**, no live trail | You simply move onto it. |
+| **Your own territory**, with a live trail | **Loop closes** → capture fill (below), then advance. |
+| **Your own trail** | **Loop closes** — same capture as re-entering your own land. This is *not* a death. (Deviates from classic Paper.io and from [Elimination rules](#elimination-rules) above.) |
+| **An opponent's trail** | That opponent is **eliminated** (below); their trail is wiped to neutral; your kill count increments; you advance onto the now-neutral cell, laying trail. |
+| **An opponent's territory** | Currently overwritten with your trail — you can plow straight through enemy land, turning each crossed cell into your wake. (The plan wanted this treated as a wall; the demo does not do that yet.) |
+| **Off the board edge** | **Not a death.** You hold position for the tick, still facing the wall, so you keep sitting still until you steer to a direction that stays on the board (a bot re-picks next tick). |
+
+### Capture fill & territory splits
+
+When a loop closes:
+
+1. **Capture fill** (`resolveCapture`) — flood from every border cell through anything
+   that is not your trail/territory. Your entire trail, plus every cell the flood cannot
+   reach, becomes your territory. A pocket of an opponent's land is swallowed whole if
+   your loop sealed it off completely.
+2. **Split resolution** (`resolveTerritorySplit`, run once for each *other* player) —
+   scan that player's remaining territory into connected components and keep exactly
+   one; every other fragment reverts to neutral. The keeper is the component holding
+   that player's **piece** (their head), falling back to the one holding their home
+   base, and — if by now they own neither cell (base captured long ago, currently
+   trailing across open ground) — to their largest remaining fragment, so a roaming
+   leader isn't wiped by a nick on the far side of the map. This is the `numIslands`
+   scan restricted to one player's cells.
+
+Your trail is then cleared and your head sits on the cell you just entered (now your
+territory).
+
+### Elimination & respawn
+
+- **Elimination** (stepping onto an opponent's trail): your `alive` flag goes false,
+  your in-progress trail reverts to neutral (territory you already owned is untouched),
+  and a respawn is scheduled for `RESPAWN_DELAY_TICKS = 12` ticks later.
+- **A kill re-runs split resolution for everyone.** Because a trail can be plowed
+  straight through enemy land, wiping the dead player's trail back to neutral can
+  leave a chunk of some *other* player's territory cut off from their piece with no
+  loop ever having closed. So after any elimination the game runs
+  `resolveTerritorySplit` for every player, the same pass a capture triggers, and
+  any now-orphaned fragment reverts to neutral.
+- **Respawn needs a clear 3×3.** When the timer is up, the game looks for a fully-neutral
+  3×3 pocket, scanning outward from your old home. If none exists yet you **stay dead**,
+  and it re-checks every tick until one opens up (freed by a later capture, split, or
+  another player dying). Only then do you get a fresh 3×3 base at that spot, facing up,
+  with the human start gate re-armed.
+
+### Bots
+
+Each tick, every living bot scores its candidate directions (all four except a straight
+reversal) and takes the best:
+
+- **Off the board** → heavily penalised (it would only waste a tick holding still).
+- **Onto its own trail** → attractive once the trail is long enough to be worth banking
+  (`BOT_HOMESICK_TRAIL_LENGTH = 9`+ cells), avoided while the trail is short.
+- Once the trail reaches 9+ cells the bot turns **homesick** and simply heads for its
+  home cell (minimise Manhattan distance).
+- Otherwise it prefers unclaimed neutral cells, with a slight pull back toward home and a
+  little random jitter so the three bots don't move in lockstep.
+
+Net behaviour: a bot sails out into open water, then after roughly nine cells of wake
+heads back to close its loop and bank a modest capture.
+
+Each of the four scoring numbers is a field of a per-player **`BotProfile`**
+(`src/features/landGrab/botProfile.ts`); all players start on `DEFAULT_BOT_PROFILE` and
+the demo's Profiles panel edits each independently and live. See
+[`docs/land-grab/bots.md`](land-grab/bots.md) for the full breakdown, including why a
+stationary player at one corner biases the standings.
+
+### Demo controls & display
+
+- **Arrow keys** or **WASD** steer your boat.
+- **Restart** starts a fresh match.
+- **Pause** (or <kbd>Space</kbd>) freezes the tick loop; **Step** (or <kbd>.</kbd>)
+  advances exactly one tick while paused; a **Speed** selector runs the loop at
+  0.25×–4×. None of these change the simulation, only how often it steps.
+- **Profiles** opens a panel with a card per player: live sliders for every bot's
+  `BotProfile` fields plus the match-level respawn delay, per-card and global **Reset**,
+  and an **Autopilot** toggle on *You* that hands your boat to the same `decideBotFacing`
+  scorer with its own editable profile.
+- **Full screen** (in the leaderboard panel) expands the grid to fill the window;
+  because the cell count changes, toggling restarts the match. **Esc** exits.
 
 ## Algorithm mapping — this is the point of the project
 
@@ -249,6 +375,9 @@ existing `npm run dev` / static-build model. Recommended split, in phases:
 
 ## Status
 
-This is the plan only. Next step is Phase 0's `grid.ts` (the `floodFromBorder` capture
-fill and its unit tests), since it's the one piece every later phase depends on and is
-directly checkable against the Number of Islands doc's example grids.
+**Phase 0 is built.** The local "you vs. three bots" prototype exists in
+`src/features/landGrab/` (pure grid/simulation logic with unit tests in `src/test/`, plus
+the Phaser-in-React demo) and is wired into the nav. See
+[Implemented rules (Phase 0 demo)](#implemented-rules-phase-0-demo) for how the game
+actually plays today. The plan text above is kept as the original design intent; the
+networked phases (authoritative `ws` server, real multiplayer, deploy) are still ahead.

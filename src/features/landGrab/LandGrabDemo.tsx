@@ -4,15 +4,20 @@ import {
   createInitialGameState,
   setPlayerFacing,
   stepGame,
+  DEFAULT_GAME_RULES,
   TICK_MS,
+  type GameRules,
   type GameState,
   type PlayerConfig,
   type PlayerState,
 } from "./simulation";
+import { cloneProfile, DEFAULT_BOT_PROFILE, type BotProfile } from "./botProfile";
+import { BotProfilePanel } from "./BotProfilePanel";
 import type { Direction } from "./types";
 
 const CELL_SIZE = 22;
 const DEFAULT_DIMS = { rows: 16, cols: 24, cell: CELL_SIZE };
+const SPEED_OPTIONS = [0.25, 0.5, 1, 2, 4];
 
 interface GridDims {
   rows: number;
@@ -45,6 +50,14 @@ const PLAYER_CONFIGS: PlayerConfig[] = [
 
 const HUMAN_ID = "you";
 
+function makeInitialProfiles(): Record<string, BotProfile> {
+  return Object.fromEntries(PLAYER_CONFIGS.map((c) => [c.id, cloneProfile(DEFAULT_BOT_PROFILE)]));
+}
+
+function makeInitialAutopilot(): Record<string, boolean> {
+  return Object.fromEntries(PLAYER_CONFIGS.map((c) => [c.id, false]));
+}
+
 const KEY_TO_DIRECTION: Record<string, Direction> = {
   ArrowUp: "up",
   ArrowDown: "down",
@@ -56,14 +69,30 @@ const KEY_TO_DIRECTION: Record<string, Direction> = {
   d: "right",
 };
 
+/** Mutable knobs the React layer owns and the Phaser tick loop reads each frame. */
+interface SceneControl {
+  paused: boolean;
+  speed: number;
+  /** Set by the Step button to let exactly one tick through while paused. */
+  stepOnce: boolean;
+}
+
 interface SceneData {
   gameStateRef: { current: GameState };
+  controlRef: { current: SceneControl };
+  profilesRef: { current: Record<string, BotProfile> };
+  autopilotRef: { current: Record<string, boolean> };
+  rulesRef: { current: GameRules };
   onTick: (state: GameState) => void;
   cellSize: number;
 }
 
 class LandGrabScene extends Phaser.Scene {
   private gameStateRef!: SceneData["gameStateRef"];
+  private controlRef!: SceneData["controlRef"];
+  private profilesRef!: SceneData["profilesRef"];
+  private autopilotRef!: SceneData["autopilotRef"];
+  private rulesRef!: SceneData["rulesRef"];
   private onTick!: SceneData["onTick"];
   private cellSize = CELL_SIZE;
   private graphics!: Phaser.GameObjects.Graphics;
@@ -75,6 +104,10 @@ class LandGrabScene extends Phaser.Scene {
 
   init(data: SceneData) {
     this.gameStateRef = data.gameStateRef;
+    this.controlRef = data.controlRef;
+    this.profilesRef = data.profilesRef;
+    this.autopilotRef = data.autopilotRef;
+    this.rulesRef = data.rulesRef;
     this.onTick = data.onTick;
     this.cellSize = data.cellSize;
   }
@@ -84,6 +117,11 @@ class LandGrabScene extends Phaser.Scene {
     this.draw();
 
     this.input.keyboard?.on("keydown", (event: KeyboardEvent) => {
+      // Phaser listens on window, so a keypress inside the Profiles panel lands
+      // here too. Don't steer the boat (or swallow the key) when a form control
+      // has focus — the panel's sliders need their own arrow-key handling.
+      const target = event.target as HTMLElement | null;
+      if (target && ["INPUT", "SELECT", "TEXTAREA", "BUTTON"].includes(target.tagName)) return;
       const direction = KEY_TO_DIRECTION[event.key];
       if (!direction) return;
       event.preventDefault();
@@ -94,7 +132,21 @@ class LandGrabScene extends Phaser.Scene {
       delay: TICK_MS,
       loop: true,
       callback: () => {
-        this.gameStateRef.current = stepGame(this.gameStateRef.current);
+        const control = this.controlRef.current;
+        this.time.timeScale = control.speed;
+        if (control.paused && !control.stepOnce) return;
+        control.stepOnce = false;
+
+        const state = this.gameStateRef.current;
+        // Push the React-owned knobs onto the live state before stepping.
+        state.rules.respawnDelayTicks = this.rulesRef.current.respawnDelayTicks;
+        for (const id of Object.keys(state.players)) {
+          const profile = this.profilesRef.current[id];
+          if (profile) state.players[id].profile = profile;
+          state.players[id].autopilot = !!this.autopilotRef.current[id];
+        }
+
+        this.gameStateRef.current = stepGame(state);
         this.draw();
         this.onTick(this.gameStateRef.current);
       },
@@ -156,14 +208,68 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState<GridDims>(DEFAULT_DIMS);
   const [fullScreen, setFullScreen] = useState(false);
+
+  const [paused, setPaused] = useState(false);
+  const [speed, setSpeed] = useState(1);
+  const [showProfiles, setShowProfiles] = useState(false);
+  const [profiles, setProfiles] = useState<Record<string, BotProfile>>(makeInitialProfiles);
+  const [autopilot, setAutopilot] = useState<Record<string, boolean>>(makeInitialAutopilot);
+  const [rules, setRules] = useState<GameRules>({ ...DEFAULT_GAME_RULES });
+
+  const controlRef = useRef<SceneControl>({ paused: false, speed: 1, stepOnce: false });
+  const profilesRef = useRef(profiles);
+  const autopilotRef = useRef(autopilot);
+  const rulesRef = useRef(rules);
+
+  const buildConfigs = (): PlayerConfig[] =>
+    PLAYER_CONFIGS.map((c) => ({
+      ...c,
+      profile: cloneProfile(profilesRef.current[c.id] ?? DEFAULT_BOT_PROFILE),
+      autopilot: !!autopilotRef.current[c.id],
+    }));
+
   const stateHolderRef = useRef<{ current: GameState }>({
-    current: createInitialGameState(DEFAULT_DIMS.rows, DEFAULT_DIMS.cols, PLAYER_CONFIGS),
+    current: createInitialGameState(DEFAULT_DIMS.rows, DEFAULT_DIMS.cols, buildConfigs(), rulesRef.current),
   });
   const [players, setPlayers] = useState<Record<string, PlayerState>>(stateHolderRef.current.current.players);
   const [tick, setTick] = useState(0);
   const [restartToken, setRestartToken] = useState(0);
 
   const leaderboard = Object.values(players).sort((a, b) => b.ownedCount - a.ownedCount);
+
+  useEffect(() => {
+    controlRef.current.paused = paused;
+  }, [paused]);
+  useEffect(() => {
+    controlRef.current.speed = speed;
+  }, [speed]);
+  useEffect(() => {
+    profilesRef.current = profiles;
+  }, [profiles]);
+  useEffect(() => {
+    autopilotRef.current = autopilot;
+  }, [autopilot]);
+  useEffect(() => {
+    rulesRef.current = rules;
+  }, [rules]);
+
+  // Space toggles pause, "." single-steps. Ignore while a control has focus so
+  // the panel's sliders/buttons keep their own key handling.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && ["INPUT", "BUTTON", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
+      if (event.code === "Space") {
+        event.preventDefault();
+        setPaused((p) => !p);
+      } else if (event.key === ".") {
+        event.preventDefault();
+        controlRef.current.stepOnce = true;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Toggling full screen changes the cell count, so the game restarts on a fresh board.
   const toggleFullScreen = () => {
@@ -187,7 +293,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   useEffect(() => {
     if (!containerRef.current) return;
 
-    stateHolderRef.current.current = createInitialGameState(dims.rows, dims.cols, PLAYER_CONFIGS);
+    stateHolderRef.current.current = createInitialGameState(dims.rows, dims.cols, buildConfigs(), rulesRef.current);
     setPlayers(stateHolderRef.current.current.players);
     setTick(0);
 
@@ -205,6 +311,10 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
       true,
       {
         gameStateRef: stateHolderRef.current,
+        controlRef,
+        profilesRef,
+        autopilotRef,
+        rulesRef,
         cellSize: dims.cell,
         onTick: (state: GameState) => {
           setPlayers({ ...state.players });
@@ -216,75 +326,141 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
     return () => {
       game.destroy(true);
     };
+    // Profiles/rules/autopilot are read from refs on build, not deps — editing
+    // them must not tear down and restart the match.
   }, [restartToken, dims]);
+
+  const handleProfileChange = (id: string, key: keyof BotProfile, value: number) => {
+    setProfiles((prev) => ({ ...prev, [id]: { ...prev[id], [key]: value } }));
+  };
+  const handleResetProfile = (id: string) => {
+    setProfiles((prev) => ({ ...prev, [id]: cloneProfile(DEFAULT_BOT_PROFILE) }));
+  };
+  const handleResetAll = () => {
+    setProfiles(makeInitialProfiles());
+    setRules({ ...DEFAULT_GAME_RULES });
+  };
 
   return (
     <div
       className={
-        (fullScreen
-          ? "fixed inset-0 z-50 bg-background p-4 overflow-auto "
-          : "") + "flex flex-col min-[1400px]:flex-row min-[1400px]:items-start gap-4"
+        (fullScreen ? "fixed inset-0 z-50 bg-background p-4 overflow-auto " : "") + "flex flex-col gap-4"
       }
     >
-      <div className="flex flex-col gap-4 min-w-0">
-        <div ref={containerRef} className="rounded-lg overflow-hidden border border-border w-fit max-w-full overflow-x-auto" />
+      <div className="flex flex-col min-[1400px]:flex-row min-[1400px]:items-start gap-4">
+        <div className="flex flex-col gap-4 min-w-0">
+          <div ref={containerRef} className="rounded-lg overflow-hidden border border-border w-fit max-w-full overflow-x-auto" />
+          {!hideControls && (
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => setRestartToken((n) => n + 1)}
+                className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                Restart
+              </button>
+              <button
+                onClick={() => setPaused((p) => !p)}
+                className="px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+                aria-pressed={paused}
+              >
+                {paused ? "Resume" : "Pause"}
+              </button>
+              <button
+                onClick={() => {
+                  controlRef.current.stepOnce = true;
+                }}
+                disabled={!paused}
+                className="px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Step
+              </button>
+              <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                Speed
+                <select
+                  value={speed}
+                  onChange={(e) => setSpeed(Number(e.target.value))}
+                  className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground"
+                >
+                  {SPEED_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}×
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                onClick={() => setShowProfiles((s) => !s)}
+                className="px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+                aria-expanded={showProfiles}
+              >
+                {showProfiles ? "Hide profiles" : "Profiles"}
+              </button>
+              <ul className="flex flex-wrap gap-4 text-sm min-[1400px]:hidden">
+                {leaderboard.map((player) => (
+                  <li key={player.id} className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: colorToHex(player.color) }} />
+                    <span className="text-foreground font-medium">{player.label}</span>
+                    <span className="text-muted-foreground">{player.ownedCount} cells</span>
+                    {!player.alive && <span className="text-destructive text-xs">respawning…</span>}
+                  </li>
+                ))}
+              </ul>
+              <span className="text-xs text-muted-foreground ml-auto" data-testid="landgrab-tick">
+                Arrow keys / WASD to move · Space pauses · “.” steps · tick {tick}
+              </span>
+            </div>
+          )}
+        </div>
         {!hideControls && (
-          <div className="flex flex-wrap items-center gap-4">
-            <button
-              onClick={() => setRestartToken((n) => n + 1)}
-              className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
-            >
-              Restart
-            </button>
-            <ul className="flex flex-wrap gap-4 text-sm min-[1400px]:hidden">
-              {leaderboard.map((player) => (
+          <aside
+            className={
+              (fullScreen ? "block " : "hidden min-[1400px]:block ") +
+              "shrink-0 w-56 rounded-lg border border-border p-4"
+            }
+          >
+            <h3 className="text-sm font-semibold text-foreground mb-3">Leaderboard</h3>
+            <ol className="flex flex-col gap-2 text-sm">
+              {leaderboard.map((player, index) => (
                 <li key={player.id} className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: colorToHex(player.color) }} />
-                  <span className="text-foreground font-medium">{player.label}</span>
-                  <span className="text-muted-foreground">{player.ownedCount} cells</span>
-                  {!player.alive && <span className="text-destructive text-xs">respawning…</span>}
+                  <span className="text-muted-foreground tabular-nums w-4">{index + 1}</span>
+                  <span className="w-3 h-3 rounded-full inline-block shrink-0" style={{ backgroundColor: colorToHex(player.color) }} />
+                  <span className="text-foreground font-medium truncate">{player.label}</span>
+                  <span className="text-muted-foreground tabular-nums ml-auto">{player.ownedCount}</span>
                 </li>
               ))}
+            </ol>
+            <ul className="mt-3 flex flex-col gap-1">
+              {leaderboard.filter((p) => !p.alive).map((player) => (
+                <li key={player.id} className="text-destructive text-xs">{player.label} respawning…</li>
+              ))}
             </ul>
-            <span className="text-xs text-muted-foreground ml-auto">Arrow keys / WASD to move · tick {tick}</span>
-          </div>
+            <button
+              onClick={toggleFullScreen}
+              className="mt-4 w-full px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+            >
+              {fullScreen ? "Exit full screen" : "Full screen"}
+            </button>
+            {fullScreen && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                {dims.cols}×{dims.rows} cells · press Esc to exit
+              </p>
+            )}
+          </aside>
         )}
       </div>
-      {!hideControls && (
-        <aside
-          className={
-            (fullScreen ? "block " : "hidden min-[1400px]:block ") +
-            "shrink-0 w-56 rounded-lg border border-border p-4"
-          }
-        >
-          <h3 className="text-sm font-semibold text-foreground mb-3">Leaderboard</h3>
-          <ol className="flex flex-col gap-2 text-sm">
-            {leaderboard.map((player, index) => (
-              <li key={player.id} className="flex items-center gap-2">
-                <span className="text-muted-foreground tabular-nums w-4">{index + 1}</span>
-                <span className="w-3 h-3 rounded-full inline-block shrink-0" style={{ backgroundColor: colorToHex(player.color) }} />
-                <span className="text-foreground font-medium truncate">{player.label}</span>
-                <span className="text-muted-foreground tabular-nums ml-auto">{player.ownedCount}</span>
-              </li>
-            ))}
-          </ol>
-          <ul className="mt-3 flex flex-col gap-1">
-            {leaderboard.filter((p) => !p.alive).map((player) => (
-              <li key={player.id} className="text-destructive text-xs">{player.label} respawning…</li>
-            ))}
-          </ul>
-          <button
-            onClick={toggleFullScreen}
-            className="mt-4 w-full px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
-          >
-            {fullScreen ? "Exit full screen" : "Full screen"}
-          </button>
-          {fullScreen && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              {dims.cols}×{dims.rows} cells · press Esc to exit
-            </p>
-          )}
-        </aside>
+      {!hideControls && showProfiles && (
+        <BotProfilePanel
+          configs={PLAYER_CONFIGS}
+          humanId={HUMAN_ID}
+          profiles={profiles}
+          autopilot={autopilot}
+          rules={rules}
+          onProfileChange={handleProfileChange}
+          onAutopilotChange={(id, on) => setAutopilot((prev) => ({ ...prev, [id]: on }))}
+          onResetProfile={handleResetProfile}
+          onResetAll={handleResetAll}
+          onRulesChange={(patch) => setRules((prev) => ({ ...prev, ...patch }))}
+        />
       )}
     </div>
   );

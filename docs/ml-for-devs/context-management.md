@@ -2,6 +2,13 @@
 
 The limits described in [Threshold Decay and Other Instruction Limits](/attention-limits) — threshold decay, attention dilution, attention sinks, lost-in-the-middle, the Dumb Zone, context rot — aren't bugs you can prompt your way around — they're structural consequences of how softmax attention works (fixed attention mass split across every token, quadratic pairwise cost as the sequence grows). That means the fix isn't "phrase it more carefully so the model prioritizes correctly" — it's controlling what goes into context in the first place, since nothing you say inside an already-overloaded context reliably escapes the effects on it. The sections below map each mechanism from that doc to a concrete practice for working with Claude Code, plus how the same principles carry over to Cursor.
 
+## Cheat-sheet
+
+- `/context` see the number of tokens in the current context
+- `/clear` start a new context
+- `/compact` manually compresses your long conversation history into a focused summary to free up tokens in your context window
+
+
 ## Keep CLAUDE.md and prompts short
 
 Attention dilution is zero-sum: every rule you add competes with every other rule for the same fixed attention budget, including the ones you actually care about. A 40-line `CLAUDE.md` doesn't just risk rule #38 being ignored — it also weakens compliance with rule #2.

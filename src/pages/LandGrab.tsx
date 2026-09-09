@@ -39,6 +39,11 @@ const LandGrab = () => {
                 <li>Sail off your own territory and you leave a trail behind you.</li>
                 <li>Sail back into your own territory to close the loop — the trail and everything it encircled becomes yours (even a chunk of a bot's land, if your loop swallows it whole).</li>
                 <li>Touch any trail — yours or a bot's — and that player sinks: their in-progress loop is voided and they respawn at home. Already-captured territory is untouched.</li>
+                <li>
+                  <strong className="text-foreground">Pause</strong> (Space) and open{" "}
+                  <strong className="text-foreground">Profiles</strong> to inspect and live-tweak each bot's decision
+                  variables — or hand your own boat to the bot AI with <strong className="text-foreground">Autopilot</strong>.
+                </li>
               </ul>
               <LandGrabDemo />
             </div>
