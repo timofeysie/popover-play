@@ -35,21 +35,29 @@ describe("stepGame — a full capture loop", () => {
     expect(state.grid[2][4]).toEqual({ kind: "territory", playerId: "p1" });
   });
 
-  it("running into your own trail closes the loop instead of eliminating you", () => {
+  it("running through your own trail passes straight through — the loop only closes on your territory", () => {
     let state = createInitialGameState(7, 7, [HUMAN]);
-    // Home base is rows 1-3 / cols 1-3. Trace a trail out of it and back onto
-    // an earlier trail cell at (2,4) to pinch the loop shut.
+    // Home base is rows 1-3 / cols 1-3. Trace a trail out of it and back over
+    // the earlier trail cell at (2,4).
     const path: Direction[] = ["right", "right", "right", "up", "up", "left", "down", "down"];
     for (const direction of path) {
       setPlayerFacing(state, "p1", direction);
       state = stepGame(state);
     }
 
-    const player = state.players.p1;
+    let player = state.players.p1;
     expect(player.alive).toBe(true);
     expect(player.respawnAt).toBeNull();
+    expect(player.head).toEqual({ row: 2, col: 4 }); // sailed onto its own wake
+    expect(player.trail.length).toBeGreaterThan(0); // ...but the loop did NOT close
+    expect(player.ownedCount).toBe(9); // still just the base — nothing captured
+
+    // One more step west lands back on home territory (2,3) and closes it.
+    setPlayerFacing(state, "p1", "left");
+    state = stepGame(state);
+    player = state.players.p1;
     expect(player.trail).toEqual([]); // loop closed, trail consumed
-    expect(player.head).toEqual({ row: 2, col: 4 });
+    expect(player.head).toEqual({ row: 2, col: 3 });
     expect(player.ownedCount).toBe(15); // 9 base + 6 trail cells turned territory
     expect(state.grid[0][5]).toEqual({ kind: "territory", playerId: "p1" });
   });
@@ -93,17 +101,21 @@ describe("stepGame — human start gate", () => {
 
 describe("stepGame — respawn needs a clear 3x3", () => {
   it("holds a dead player out until an empty 3x3 pocket opens up", () => {
-    const bots: PlayerConfig[] = [
-      { id: "p1", label: "One", color: 0x38bdf8, isBot: true },
-      { id: "p2", label: "Two", color: 0xf87171, isBot: true },
+    // Three idle (non-bot, un-started) players so nobody moves and no winner is
+    // declared: p1 blankets most of the board, p3 keeps a live foothold, p2 is
+    // dead with its respawn already due.
+    const roster: PlayerConfig[] = [
+      { id: "p1", label: "One", color: 0x38bdf8, isBot: false },
+      { id: "p2", label: "Two", color: 0xf87171, isBot: false },
+      { id: "p3", label: "Three", color: 0x4ade80, isBot: false },
     ];
-    let state = createInitialGameState(7, 7, bots);
+    let state = createInitialGameState(7, 7, roster);
 
-    // Flood the board with p1 territory (no open 3x3 anywhere) and drop p2 into
-    // a dead state whose respawn timer is already due.
+    const grid = state.grid.map((row) => row.map((): CellState => ({ kind: "territory", playerId: "p1" })));
+    grid[6][6] = { kind: "territory", playerId: "p3" }; // p3's foothold — p1 isn't the conqueror
     state = {
       ...state,
-      grid: state.grid.map((row) => row.map((): typeof row[number] => ({ kind: "territory", playerId: "p1" }))),
+      grid,
       players: {
         ...state.players,
         p2: { ...state.players.p2, alive: false, trail: [], respawnAt: state.tick },
@@ -111,6 +123,7 @@ describe("stepGame — respawn needs a clear 3x3", () => {
     };
 
     state = stepGame(state);
+    expect(state.winnerId).toBeNull(); // two players still alive, board just has no room
     expect(state.players.p2.alive).toBe(false);
     expect(state.players.p2.respawnAt).not.toBeNull();
 
@@ -127,27 +140,78 @@ describe("stepGame — respawn needs a clear 3x3", () => {
   });
 });
 
-describe("stepGame — a kill that severs plowed-through territory", () => {
-  it("reverts the part of a player's land a dead rival's trail had cut off", () => {
+describe("stepGame — cutting a trail captures both wakes and bridges the land", () => {
+  it("folds your wake, their wake, and their territory into one connected blob", () => {
+    const configs: PlayerConfig[] = [
+      { id: "p1", label: "You", color: 0x38bdf8, isBot: false },
+      { id: "p2", label: "Rival", color: 0xf87171, isBot: true },
+    ];
+    let state = createInitialGameState(9, 9, configs);
+
+    const grid = state.grid.map((row) => row.map((): CellState => ({ kind: "neutral" })));
+    // p1: a 2x2 base top-left, with a wake running east along row 1 to (1,4).
+    for (const [r, c] of [[0, 0], [0, 1], [1, 0], [1, 1]]) grid[r][c] = { kind: "territory", playerId: "p1" };
+    const p1Trail = [{ row: 1, col: 2 }, { row: 1, col: 3 }, { row: 1, col: 4 }];
+    for (const { row, col } of p1Trail) grid[row][col] = { kind: "trail", playerId: "p1" };
+    // p2: a 2x2 base bottom-right, wake running north up column 5 to (1,5) —
+    // right next to p1's head.
+    for (const [r, c] of [[6, 6], [6, 7], [7, 6], [7, 7]]) grid[r][c] = { kind: "territory", playerId: "p2" };
+    const p2Trail = [
+      { row: 6, col: 5 }, { row: 5, col: 5 }, { row: 4, col: 5 },
+      { row: 3, col: 5 }, { row: 2, col: 5 }, { row: 1, col: 5 },
+    ];
+    for (const { row, col } of p2Trail) grid[row][col] = { kind: "trail", playerId: "p2" };
+
+    state = {
+      ...state,
+      grid,
+      players: {
+        ...state.players,
+        p1: { ...state.players.p1, home: { row: 0, col: 0 }, head: { row: 1, col: 4 }, facing: "right", trail: [...p1Trail], hasStarted: true },
+        p2: { ...state.players.p2, home: { row: 6, col: 6 }, head: { row: 1, col: 5 }, facing: "up", trail: [...p2Trail] },
+      },
+    };
+
+    setPlayerFacing(state, "p1", "right");
+    state = stepGame(state); // p1: (1,4) -> (1,5), cutting p2's wake
+
+    const p1 = state.players.p1;
+    const p2 = state.players.p2;
+
+    expect(p2.alive).toBe(false);
+    expect(p2.respawnAt).not.toBeNull();
+    expect(p2.ownedCount).toBe(0);
+    expect(p1.trail).toEqual([]);
+    expect(p1.head).toEqual({ row: 1, col: 5 });
+
+    // The whole bridge is p1 territory: base, p1 wake, the cut cell, p2 wake, p2 land.
+    for (const { row, col } of [
+      { row: 0, col: 0 }, { row: 1, col: 1 },
+      { row: 1, col: 2 }, { row: 1, col: 4 }, { row: 1, col: 5 },
+      { row: 3, col: 5 }, { row: 6, col: 5 },
+      { row: 6, col: 6 }, { row: 7, col: 7 },
+    ]) {
+      expect(state.grid[row][col]).toEqual({ kind: "territory", playerId: "p1" });
+    }
+    // Open water beside the bridge is untouched — no runaway capture fill.
+    expect(state.grid[3][0]).toEqual({ kind: "neutral" });
+    expect(p1.ownedCount).toBe(17); // 4 base + 3 wake + 6 rival wake + 4 rival land
+  });
+
+  it("bridges across a rival's trail that had been plowed through your own land", () => {
     const configs: PlayerConfig[] = [
       { id: "p1", label: "You", color: 0x38bdf8, isBot: false },
       { id: "p2", label: "Rival", color: 0xf87171, isBot: true },
     ];
     let state = createInitialGameState(7, 7, configs);
 
-    // p1 owns a single horizontal strip anchored at its home (3,0); p2 has
-    // plowed a vertical trail straight down column 3, overwriting the middle of
-    // that strip. Row 3 is now two territory chunks (cols 0-2 and cols 4-6)
-    // bridged only by p2's fragile trail cell.
+    // p1 owns row 3 except col 3; p2 has plowed a trail down column 3, splitting
+    // the strip. Cutting that trail now welds the two halves together.
     const grid = state.grid.map((row) => row.map((): CellState => ({ kind: "neutral" })));
     for (let col = 0; col <= 6; col++) {
       if (col !== 3) grid[3][col] = { kind: "territory", playerId: "p1" };
     }
-    const rivalTrail = [
-      { row: 2, col: 3 },
-      { row: 3, col: 3 },
-      { row: 4, col: 3 },
-    ];
+    const rivalTrail = [{ row: 2, col: 3 }, { row: 3, col: 3 }, { row: 4, col: 3 }];
     for (const { row, col } of rivalTrail) grid[row][col] = { kind: "trail", playerId: "p2" };
 
     state = {
@@ -160,17 +224,16 @@ describe("stepGame — a kill that severs plowed-through territory", () => {
       },
     };
 
-    // p1 steps onto p2's trail: p2 is eliminated, its trail wiped to neutral,
-    // and the cols 4-6 chunk is now cut off from p1's home.
     setPlayerFacing(state, "p1", "right");
-    state = stepGame(state);
+    state = stepGame(state); // p1: (3,2) -> (3,3), cutting p2's trail
 
     expect(state.players.p2.alive).toBe(false);
-    expect(state.grid[3][0]).toEqual({ kind: "territory", playerId: "p1" });
-    expect(state.grid[3][2]).toEqual({ kind: "territory", playerId: "p1" });
-    expect(state.grid[3][4]).toEqual({ kind: "neutral" });
-    expect(state.grid[3][5]).toEqual({ kind: "neutral" });
-    expect(state.grid[3][6]).toEqual({ kind: "neutral" });
+    for (let col = 0; col <= 6; col++) {
+      expect(state.grid[3][col]).toEqual({ kind: "territory", playerId: "p1" });
+    }
+    expect(state.grid[2][3]).toEqual({ kind: "territory", playerId: "p1" });
+    expect(state.grid[4][3]).toEqual({ kind: "territory", playerId: "p1" });
+    expect(state.players.p1.ownedCount).toBe(9); // 6 strip + 1 gap + 2 trail stubs
   });
 });
 
@@ -216,6 +279,56 @@ describe("stepGame — custom rules", () => {
 
     expect(after.players.p2.alive).toBe(false);
     expect(after.players.p2.respawnAt).toBe(3); // nextTick (1) + respawnDelayTicks (2)
+  });
+});
+
+describe("stepGame — winner detection", () => {
+  const configs: PlayerConfig[] = [
+    { id: "p1", label: "You", color: 0x38bdf8, isBot: false },
+    { id: "p2", label: "Rival", color: 0xf87171, isBot: true },
+  ];
+
+  it("starts with no winner", () => {
+    expect(createInitialGameState(7, 7, configs).winnerId).toBeNull();
+  });
+
+  it("declares the winner once one player holds every cell", () => {
+    let state = createInitialGameState(5, 5, configs);
+    state = {
+      ...state,
+      grid: state.grid.map((row) => row.map((): CellState => ({ kind: "territory", playerId: "p1" }))),
+      players: {
+        ...state.players,
+        p1: { ...state.players.p1, head: { row: 2, col: 2 }, hasStarted: true },
+        p2: { ...state.players.p2, alive: false, trail: [], respawnAt: 0 },
+      },
+    };
+    state = stepGame(state);
+    expect(state.winnerId).toBe("p1");
+    expect(state.players.p1.ownedCount).toBe(25);
+  });
+
+  it("declares the last boat afloat when no eliminated player can respawn", () => {
+    let state = createInitialGameState(5, 5, configs);
+    const grid = state.grid.map((row) => row.map((): CellState => ({ kind: "territory", playerId: "p1" })));
+    grid[0][0] = { kind: "neutral" }; // one stray cell — not a 3x3, so no respawn fits
+    state = {
+      ...state,
+      grid,
+      players: {
+        ...state.players,
+        p1: { ...state.players.p1, head: { row: 2, col: 2 }, hasStarted: true },
+        p2: { ...state.players.p2, alive: false, trail: [], respawnAt: 0 },
+      },
+    };
+    state = stepGame(state);
+    expect(state.players.p1.ownedCount).toBe(24); // not the whole board…
+    expect(state.winnerId).toBe("p1"); // …but still decided
+  });
+
+  it("freezes the state once a winner is set", () => {
+    const decided = { ...createInitialGameState(7, 7, configs), winnerId: "p1" };
+    expect(stepGame(decided)).toBe(decided);
   });
 });
 

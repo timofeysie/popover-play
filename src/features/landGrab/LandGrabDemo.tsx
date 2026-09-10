@@ -13,7 +13,18 @@ import {
 } from "./simulation";
 import { cloneProfile, DEFAULT_BOT_PROFILE, type BotProfile } from "./botProfile";
 import { BotProfilePanel } from "./BotProfilePanel";
+import { buildGameRecord, saveGameRecord, type LandGrabGameRecord } from "./gameRecord";
 import type { Direction } from "./types";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const CELL_SIZE = 22;
 const DEFAULT_DIMS = { rows: 16, cols: 24, cell: CELL_SIZE };
@@ -200,6 +211,14 @@ function colorToHex(color: number): string {
   return `#${color.toString(16).padStart(6, "0")}`;
 }
 
+/** `mm:ss` from a millisecond duration. */
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
 export interface LandGrabDemoProps {
   hideControls?: boolean;
 }
@@ -234,6 +253,14 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   const [players, setPlayers] = useState<Record<string, PlayerState>>(stateHolderRef.current.current.players);
   const [tick, setTick] = useState(0);
   const [restartToken, setRestartToken] = useState(0);
+  const [gameOver, setGameOver] = useState<LandGrabGameRecord | null>(null);
+  // Guards the once-per-match record write from inside the Phaser tick loop.
+  const recordedRef = useRef(false);
+  // Read inside the tick loop; the preview card (hideControls) doesn't record or pop a dialog.
+  const hideControlsRef = useRef(hideControls);
+  hideControlsRef.current = hideControls;
+
+  const restart = () => setRestartToken((n) => n + 1);
 
   const leaderboard = Object.values(players).sort((a, b) => b.ownedCount - a.ownedCount);
 
@@ -296,6 +323,10 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
     stateHolderRef.current.current = createInitialGameState(dims.rows, dims.cols, buildConfigs(), rulesRef.current);
     setPlayers(stateHolderRef.current.current.players);
     setTick(0);
+    setGameOver(null);
+    recordedRef.current = false;
+    controlRef.current.paused = false;
+    setPaused(false);
 
     const game = new Phaser.Game({
       type: Phaser.AUTO,
@@ -319,6 +350,14 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
         onTick: (state: GameState) => {
           setPlayers({ ...state.players });
           setTick(state.tick);
+          if (!hideControlsRef.current && state.winnerId && !recordedRef.current) {
+            recordedRef.current = true;
+            const record = buildGameRecord(state);
+            saveGameRecord(record);
+            setGameOver(record);
+            controlRef.current.paused = true;
+            setPaused(true);
+          }
         },
       } satisfies SceneData
     );
@@ -353,14 +392,15 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
           {!hideControls && (
             <div className="flex flex-wrap items-center gap-3">
               <button
-                onClick={() => setRestartToken((n) => n + 1)}
+                onClick={restart}
                 className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
               >
                 Restart
               </button>
               <button
                 onClick={() => setPaused((p) => !p)}
-                className="px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+                disabled={!!gameOver}
+                className="px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                 aria-pressed={paused}
               >
                 {paused ? "Resume" : "Pause"}
@@ -369,7 +409,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
                 onClick={() => {
                   controlRef.current.stepOnce = true;
                 }}
-                disabled={!paused}
+                disabled={!paused || !!gameOver}
                 className="px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Step
@@ -461,6 +501,55 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
           onResetAll={handleResetAll}
           onRulesChange={(patch) => setRules((prev) => ({ ...prev, ...patch }))}
         />
+      )}
+      {!hideControls && (
+        <AlertDialog open={gameOver !== null} onOpenChange={(open) => !open && setGameOver(null)}>
+          <AlertDialogContent data-testid="landgrab-gameover">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <span
+                  className="w-3.5 h-3.5 rounded-full inline-block shrink-0"
+                  style={{ backgroundColor: gameOver?.winner.color }}
+                />
+                {gameOver?.winner.label} wins
+              </AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="space-y-3">
+                  <p>
+                    {gameOver && gameOver.winner.ownedCount >= gameOver.board.totalCells
+                      ? `${gameOver.winner.label} captured the entire board.`
+                      : `${gameOver?.winner.label} was the last boat afloat with nowhere left for the others to respawn.`}
+                  </p>
+                  {gameOver && (
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                      <dt className="text-muted-foreground">Ticks</dt>
+                      <dd className="tabular-nums text-foreground">{gameOver.ticks}</dd>
+                      <dt className="text-muted-foreground">Match time</dt>
+                      <dd className="tabular-nums text-foreground">{formatDuration(gameOver.durationMs)}</dd>
+                      <dt className="text-muted-foreground">Board</dt>
+                      <dd className="tabular-nums text-foreground">
+                        {gameOver.board.cols}×{gameOver.board.rows} · {gameOver.board.totalCells} cells
+                      </dd>
+                      <dt className="text-muted-foreground">Winner cells</dt>
+                      <dd className="tabular-nums text-foreground">
+                        {gameOver.winner.ownedCount} ({Math.round(gameOver.winner.ownedFraction * 100)}%)
+                      </dd>
+                      <dt className="text-muted-foreground">Winner kills</dt>
+                      <dd className="tabular-nums text-foreground">{gameOver.winner.kills}</dd>
+                    </dl>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Saved to this browser as a game record (<code>landgrab:game-records</code>).
+                  </p>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setGameOver(null)}>Dismiss</AlertDialogCancel>
+              <AlertDialogAction onClick={restart}>Play again</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </div>
   );

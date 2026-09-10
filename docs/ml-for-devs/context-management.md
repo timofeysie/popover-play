@@ -114,4 +114,19 @@ Resuming is the opposite of `/clear`: `--resume` and `/resume` replay the *entir
 - **Restate decisions still in play after a resume or compact.** Compaction summarizes; a nuance that drove an earlier decision can be lost in the compressed summary. Say it again explicitly rather than trusting it stayed legible through the resume.
 - **Match the session to the task using the titles, don't just grab the most recent.** The human-readable list exists so you can pick the session you actually mean to continue — resuming the wrong long session loads a large irrelevant context you then have to `/clear` anyway.
 
+## What `/compact` does to the context
+
+`/compact` replaces the conversation history — every message, tool call, and tool result so far — with a single model-generated summary, then carries on from there. The transcript file on disk is left alone (the un-compacted session is still there to `--resume`), but the *live* context the model reasons over from this point forward is that summary plus whatever it re-reads.
+
+Running it on the *LandGrabDemo bot direction logic* session from the resume list above — the one that showed as **1.9MB** on disk — produces this:
+
+![`/context` output for the LandGrabDemo bot direction logic session immediately after running `/compact`](/notes/land-grab-bit-direction-logic-after-compact.png)
+
+The `/compact` block at the top shows what happened: the history collapsed to a summary (`ctrl+o` prints it in full), and the model immediately re-opened the handful of files it still needs — `context-management.md`, `LandGrab.tsx`, `bots.md`, `landGrabSimulation.test.ts`. The `/context` readout underneath shows the effect: **57.6k / 1M tokens (6%)** in total, with **Messages** down to **29k tokens (2.9%)**. What was a 1.9MB transcript is now a working context sitting far below the 40% Dumb Zone line, with room to keep going on the same task.
+
+- **Compaction summarizes; it doesn't losslessly shrink.** Raw file contents, exact tool output, and the phrasing of earlier turns are gone — replaced by the summary's paraphrase. That's why the model re-reads source files right after: anything it still needs at full fidelity has to be pulled back in fresh.
+- **Check the summary with `ctrl+o` before continuing.** Confirm the decisions and constraints still in play actually survived it; if a nuance drove a later choice and isn't in the summary, restate it explicitly (the same point as the *Use `/clear` and `/compact` deliberately* section above).
+- **`/compact` frees the live window, not the disk.** That session still appears in `/resume` at its full 1.9MB — compaction changes what the *current* session carries forward, so `--resume`-ing the original still reloads the whole un-compacted history.
+- **Prefer a deliberate `/compact` at a task boundary over letting auto-compact fire.** Claude Code compacts on its own as you approach the window limit (the *Autocompact buffer* line in `/context`), but that can land mid-edit, in the middle of the model rebuilding its picture of the code from the re-read step. Triggering it yourself between sub-tasks keeps that rebuild at a safe seam.
+
 

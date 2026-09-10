@@ -12,9 +12,9 @@ export interface BotProfile {
   homesickTrailLength: number;
   /** Score for a move that leaves the board — a non-lethal wall, just a wasted tick. */
   offBoardPenalty: number;
-  /** Score for crossing your own trail while still exploring (too early to bank a loop). */
+  /** Score for crossing your own wake while still exploring — keeps the trail from tangling into itself. */
   earlyLoopPenalty: number;
-  /** Score for crossing your own trail once homesick — this closes the loop and banks the capture. */
+  /** Bonus for diving back onto your own territory once homesick — this closes the loop and banks the capture. */
   closeLoopReward: number;
   /** Bonus added when the target cell is unclaimed neutral water (explore mode only). */
   neutralBonus: number;
@@ -88,7 +88,7 @@ export const BOT_PROFILE_FIELDS: BotProfileField[] = [
     min: -5,
     max: 20,
     step: 0.5,
-    hint: "Value of touching your own wake once homesick — this pinches the loop shut and banks the capture.",
+    hint: "Pull toward diving back onto your own territory once homesick — this is what closes the loop and banks the capture.",
   },
   {
     key: "earlyLoopPenalty",
@@ -96,7 +96,7 @@ export const BOT_PROFILE_FIELDS: BotProfileField[] = [
     min: -100,
     max: 0,
     step: 1,
-    hint: "Penalty for crossing your own wake while the trail is still short. More negative → the bot avoids closing tiny loops.",
+    hint: "Penalty for steering back across your own wake while exploring. More negative → the trail stays untangled.",
   },
   {
     key: "offBoardPenalty",

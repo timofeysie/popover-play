@@ -7,23 +7,22 @@ test("land grab: pause, step, and the profiles panel", async ({ page }) => {
   const tick = page.getByTestId("landgrab-tick");
   await expect(tick).toBeVisible();
 
-  // Let the sim run a bit.
-  await page.waitForTimeout(1200);
-  const runningValue = Number((await tick.textContent())!.match(/tick (\d+)/)![1]);
-  expect(runningValue).toBeGreaterThan(0);
+  // Wait for the sim to actually start ticking (cold Vite start can lag the
+  // first paint well past a fixed timeout).
+  const tickValue = async () => Number((await tick.textContent())!.match(/tick (\d+)/)![1]);
+  await expect.poll(tickValue, { timeout: 15000 }).toBeGreaterThan(0);
 
   // Pause -> tick count should hold.
   await page.getByRole("button", { name: "Pause" }).click();
   await page.waitForTimeout(800);
-  const pausedValue = Number((await tick.textContent())!.match(/tick (\d+)/)![1]);
+  const pausedValue = await tickValue();
   await page.waitForTimeout(600);
-  const stillPaused = Number((await tick.textContent())!.match(/tick (\d+)/)![1]);
-  expect(stillPaused).toBe(pausedValue);
+  expect(await tickValue()).toBe(pausedValue);
 
   // Step -> exactly one tick advances.
   await page.getByRole("button", { name: "Step" }).click();
   await page.waitForTimeout(500);
-  const steppedValue = Number((await tick.textContent())!.match(/tick (\d+)/)![1]);
+  const steppedValue = await tickValue();
   expect(steppedValue).toBe(pausedValue + 1);
 
   // Profiles panel.
@@ -49,7 +48,5 @@ test("land grab: pause, step, and the profiles panel", async ({ page }) => {
 
   // Resume works.
   await page.getByRole("button", { name: "Resume" }).click();
-  await page.waitForTimeout(700);
-  const resumedValue = Number((await tick.textContent())!.match(/tick (\d+)/)![1]);
-  expect(resumedValue).toBeGreaterThan(steppedValue);
+  await expect.poll(tickValue, { timeout: 5000 }).toBeGreaterThan(steppedValue);
 });

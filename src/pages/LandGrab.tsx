@@ -37,12 +37,16 @@ const LandGrab = () => {
                   <strong className="text-foreground">Arrow keys or WASD</strong> steer your cyan boat.
                 </li>
                 <li>Sail off your own territory and you leave a trail behind you.</li>
-                <li>Sail back into your own territory to close the loop — the trail and everything it encircled becomes yours (even a chunk of a bot's land, if your loop swallows it whole).</li>
-                <li>Touch any trail — yours or a bot's — and that player sinks: their in-progress loop is voided and they respawn at home. Already-captured territory is untouched.</li>
+                <li>Sail back into your own territory to close the loop — the trail and everything it encircled becomes yours (even a chunk of a bot's land, if your loop swallows it whole). Crossing your own trail does nothing on its own; you have to make it all the way home.</li>
+                <li>Cut a <em>bot's</em> trail and you capture the lot: its wake, your wake, and <strong className="text-foreground">every cell it owned</strong> all turn cyan in one connected stretch, and the bot must respawn. A bot that cuts your trail takes yours the same way.</li>
                 <li>
                   <strong className="text-foreground">Pause</strong> (Space) and open{" "}
                   <strong className="text-foreground">Profiles</strong> to inspect and live-tweak each bot's decision
                   variables — or hand your own boat to the bot AI with <strong className="text-foreground">Autopilot</strong>.
+                </li>
+                <li>
+                  The match ends when one boat owns the whole board (the rest stuck on “respawning…”). A dialog shows the
+                  winner and stats, and the result is saved to this browser (<code>landgrab:game-records</code>).
                 </li>
               </ul>
               <LandGrabDemo />

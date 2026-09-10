@@ -24,8 +24,9 @@ colour, label, and which corner they start in. Each tick a bot scores the (up to
 directions it could turn and takes the highest-scoring one. The score is a greedy
 one-cell lookahead — no pathfinding, no model of the other players. Net effect: a bot
 sails out into open water laying wake, and once its trail reaches
-`BOT_HOMESICK_TRAIL_LENGTH` (9) cells it turns "homesick" and heads back to close the
-loop and bank a modest capture, then repeats.
+`BOT_HOMESICK_TRAIL_LENGTH` (9) cells it turns "homesick" and beelines back to its own
+territory to close the loop and bank a modest capture, then repeats. Sailing back
+across its own wake does nothing on its own — the loop only closes on home turf.
 
 ## The three bots
 
@@ -92,14 +93,19 @@ function score(dir: Direction): number {
   if (!inBounds(state, next)) return p.offBoardPenalty;                 // -1000
 
   const cell = state.grid[next.row][next.col];
-
-  // Our own trail: crossing it closes the loop and banks the capture.
-  // Great once the trail is long; wasteful when it's short.
-  if (cell.kind === "trail" && cell.playerId === player.id)
-    return homesick ? p.closeLoopReward : p.earlyLoopPenalty;          // 1 : -20
-
   const distanceToHome = Math.abs(next.row - player.home.row) + Math.abs(next.col - player.home.col);
-  if (homesick) return -distanceToHome;                                // pure beeline home
+
+  // Our own wake: crossing it no longer banks anything — the loop closes only
+  // back on our own territory. Homesick → it's just clear path home; exploring →
+  // steer away so the trail doesn't tangle into itself.
+  if (cell.kind === "trail" && cell.playerId === player.id)
+    return homesick ? -distanceToHome : p.earlyLoopPenalty;            // -20
+
+  if (homesick) {
+    // Diving onto our own colour with a trail still out IS the capture.
+    const banking = cell.kind === "territory" && cell.playerId === player.id && player.trail.length > 0;
+    return banking ? p.closeLoopReward - distanceToHome : -distanceToHome; // +1 bonus
+  }
 
   const preferUnclaimed = cell.kind === "neutral" ? p.neutralBonus : 0; // 2
   return preferUnclaimed - distanceToHome * p.homePull + Math.random() * p.jitter; // 0.01, 0.5
@@ -126,11 +132,11 @@ A bot's life cycles through two states, gated purely on trail length:
 
 | Phase | Condition | Behaviour |
 | --- | --- | --- |
-| **Explore** | `trail.length < 9` | Wander toward neutral water, jittered, with a 0.01-weight pull back toward home. Actively *avoids* its own trail (`-20`) so it doesn't close a tiny loop. |
-| **Homesick** | `trail.length >= 9` | Ignore neutral/claimed distinctions entirely. Score each move as `-Manhattan(next, home)` → a straight beeline for the base. Crossing its own trail now scores `+1`, which beats any non-trail approach cell (those score `<= 0`), so a homesick bot usually closes by **re-touching its own wake** rather than walking all the way home — it banks the capture as soon as it can reach the trail.
+| **Explore** | `trail.length < 9` | Wander toward neutral water, jittered, with a 0.01-weight pull back toward home. Still *avoids* its own wake (`-20`) so the trail doesn't tangle into itself. |
+| **Homesick** | `trail.length >= 9` | Ignore neutral/claimed distinctions. Score each move as `-Manhattan(next, home)` → a straight beeline for the base, crossing its own wake freely along the way. Stepping onto its own **territory** while a trail is out adds `closeLoopReward` (`+1`) — that dive back onto home turf is what closes the loop and banks the capture. |
 
-So the loop the bots draw is: strike out ~9 cells into open water, then curl back and
-pinch the loop shut on the nearest bit of their own trail. Captures are small and
+So the loop the bots draw is: strike out ~9 cells into open water, then beeline home
+and close the loop by re-entering their own territory. Captures are small and
 frequent rather than large and risky — matching the "simplest useful bot" described in
 the plan's [Open questions](../land-grab.md#open-questions).
 
@@ -142,7 +148,7 @@ the plan's [Open questions](../land-grab.md#open-questions).
   this doesn't make the suite flaky.)
 - **Homesick mode is deterministic** apart from the board state: scores are small
   integers, and exact ties resolve by `up > down > left > right` candidate order.
-- The `-1000` (off-board) and `-20` (short-trail self-cross) sentinels are only ever
+- The `-1000` (off-board) and `-20` (explore-mode self-cross) sentinels are only ever
   chosen when *every* candidate is that bad — e.g. boxed into a corner by its own trail.
 
 ## What the bots deliberately don't do
@@ -150,9 +156,9 @@ the plan's [Open questions](../land-grab.md#open-questions).
 The AI is intentionally minimal. It has **no model of the other players** and **no
 lookahead past one cell**. In particular:
 
-- **No offence.** It never steers toward an opponent's trail to cut them, even though
-  stepping on an enemy trail is a free kill in this game. Enemy trail scores the same as
-  any other non-neutral cell.
+- **No offence.** It never steers toward an opponent's trail to cut them, even though a
+  cut is a free kill that also captures both wakes and every cell that player owned into
+  one connected bridge. Enemy trail scores the same as any other non-neutral cell.
 - **No evasion.** It doesn't dodge opponents' heads or trails, and doesn't avoid driving
   through enemy territory (which is legal — you plow trail straight through it).
 - **No self-trap avoidance** beyond the single adjacent cell. A bot can wander its own
@@ -199,8 +205,8 @@ Per-player, on `PlayerState.profile` (`src/features/landGrab/botProfile.ts`,
 | `neutralBonus` | `2` | Preference for unclaimed water over owned cells while exploring. Must stay above `jitter` or neutral-seeking stops being reliable. |
 | `jitter` | `0.5` | Upper bound of the random wander added to each explore-mode score. `0` → all bots trace near-identical paths from symmetric corners. |
 | `homePull` | `0.01` | Weight of the pull back toward home while exploring (× Manhattan distance). Raise it to keep the bot hugging its corner. |
-| `closeLoopReward` | `1` | Value of touching your own wake once homesick — pinches the loop shut and banks the capture. |
-| `earlyLoopPenalty` | `-20` | Penalty for crossing your own wake while the trail is still short. More negative → avoids tiny loops. |
+| `closeLoopReward` | `1` | Bonus for diving back onto your own **territory** once homesick — the move that closes the loop and banks the capture. |
+| `earlyLoopPenalty` | `-20` | Penalty for steering back across your own wake while exploring. More negative → the trail stays untangled. |
 | `offBoardPenalty` | `-1000` | Penalty for steering into the (non-lethal) board edge. Only needs to rank below any real move. |
 
 Match- and presentation-level:

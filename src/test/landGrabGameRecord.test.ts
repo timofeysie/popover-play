@@ -1,0 +1,96 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import {
+  buildGameRecord,
+  saveGameRecord,
+  loadGameRecords,
+  GAME_RECORDS_STORAGE_KEY,
+  MAX_STORED_GAME_RECORDS,
+  type LandGrabGameRecord,
+} from "@/features/landGrab/gameRecord";
+import { createInitialGameState, type GameState, type PlayerConfig } from "@/features/landGrab/simulation";
+import { DEFAULT_BOT_PROFILE } from "@/features/landGrab/botProfile";
+
+const CONFIGS: PlayerConfig[] = [
+  { id: "you", label: "You", color: 0x38bdf8, isBot: false },
+  { id: "bot-red", label: "Red Bot", color: 0xf87171, isBot: true },
+];
+
+/** A finished 10x12 match that bot-red won on tick 437. */
+function decidedState(): GameState {
+  const base = createInitialGameState(10, 12, CONFIGS);
+  return {
+    ...base,
+    tick: 437,
+    winnerId: "bot-red",
+    players: {
+      you: { ...base.players.you, ownedCount: 0, alive: false, kills: 1 },
+      "bot-red": { ...base.players["bot-red"], ownedCount: 120, alive: true, kills: 3 },
+    },
+  };
+}
+
+describe("buildGameRecord", () => {
+  it("captures the winner, board, and timing", () => {
+    const record = buildGameRecord(decidedState(), new Date("2026-09-10T12:00:00.000Z"));
+
+    expect(record.schemaVersion).toBe(1);
+    expect(record.endedAt).toBe("2026-09-10T12:00:00.000Z");
+    expect(record.ticks).toBe(437);
+    expect(record.durationMs).toBe(437 * 160); // TICK_MS
+    expect(record.board).toEqual({ rows: 10, cols: 12, totalCells: 120 });
+    expect(record.rules.respawnDelayTicks).toBe(12);
+
+    expect(record.winner.id).toBe("bot-red");
+    expect(record.winner.label).toBe("Red Bot");
+    expect(record.winner.color).toBe("#f87171");
+    expect(record.winner.isBot).toBe(true);
+    expect(record.winner.kills).toBe(3);
+    expect(record.winner.ownedCount).toBe(120);
+    expect(record.winner.ownedFraction).toBeCloseTo(1);
+    expect(record.winner.profile).toEqual(DEFAULT_BOT_PROFILE);
+  });
+
+  it("lists every player in playerOrder", () => {
+    const record = buildGameRecord(decidedState());
+    expect(record.players.map((p) => p.id)).toEqual(["you", "bot-red"]);
+    expect(record.players.find((p) => p.id === "you")?.ownedFraction).toBe(0);
+  });
+
+  it("throws if the game is not decided", () => {
+    expect(() => buildGameRecord({ ...decidedState(), winnerId: null })).toThrow();
+  });
+});
+
+describe("saveGameRecord / loadGameRecords", () => {
+  beforeEach(() => window.localStorage.clear());
+
+  it("round-trips a record through localStorage", () => {
+    const record = buildGameRecord(decidedState());
+    saveGameRecord(record);
+
+    const loaded = loadGameRecords();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].winner.id).toBe("bot-red");
+    expect(loaded[0].ticks).toBe(437);
+  });
+
+  it("keeps newest first and caps the list", () => {
+    const base = buildGameRecord(decidedState());
+    for (let i = 0; i < MAX_STORED_GAME_RECORDS + 5; i++) {
+      saveGameRecord({ ...base, ticks: i } as LandGrabGameRecord);
+    }
+    const loaded = loadGameRecords();
+    expect(loaded).toHaveLength(MAX_STORED_GAME_RECORDS);
+    expect(loaded[0].ticks).toBe(MAX_STORED_GAME_RECORDS + 4); // most recent write
+  });
+
+  it("returns [] when storage is corrupt", () => {
+    window.localStorage.setItem(GAME_RECORDS_STORAGE_KEY, "{ not json");
+    expect(loadGameRecords()).toEqual([]);
+  });
+
+  it("drops rows from an unknown schema version", () => {
+    window.localStorage.setItem(GAME_RECORDS_STORAGE_KEY, JSON.stringify([{ schemaVersion: 99 }]));
+    expect(loadGameRecords()).toEqual([]);
+  });
+});

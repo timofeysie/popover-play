@@ -55,6 +55,13 @@ export interface GameState {
   playerOrder: string[];
   tick: number;
   rules: GameRules;
+  /**
+   * `null` while the match is live. Set to a player id once the board is
+   * decided — either that player owns every cell, or they're the last one alive
+   * and no eliminated player can ever fit a fresh base. `stepGame` freezes once
+   * this is set.
+   */
+  winnerId: string | null;
 }
 
 const DELTA: Record<Direction, Vec2> = {
@@ -125,6 +132,7 @@ export function createInitialGameState(
     playerOrder,
     tick: 0,
     rules: { ...DEFAULT_GAME_RULES, ...rules },
+    winnerId: null,
   };
 }
 
@@ -137,19 +145,32 @@ export function setPlayerFacing(state: GameState, playerId: string, direction: D
   player.hasStarted = true;
 }
 
-function eliminate(grid: CellState[][], player: PlayerState, tick: number, respawnDelay: number): CellState[][] {
-  let next = grid;
-  if (player.trail.length > 0) {
-    next = grid.map((row) => row.slice());
-    for (const { row, col } of player.trail) {
-      const cell = next[row][col];
-      if (cell.kind === "trail" && cell.playerId === player.id) next[row][col] = { kind: "neutral" };
-    }
+/** Paint a set of cells as `playerId` territory — folds both wakes into the killer's land on a trail cut. */
+function claimCells(grid: CellState[][], cells: Vec2[], playerId: string): CellState[][] {
+  if (cells.length === 0) return grid;
+  const next = grid.map((row) => row.slice());
+  const rows = next.length;
+  const cols = next[0]?.length ?? 0;
+  for (const { row, col } of cells) {
+    if (row < 0 || row >= rows || col < 0 || col >= cols) continue;
+    next[row][col] = { kind: "territory", playerId };
   }
-  player.alive = false;
-  player.trail = [];
-  player.respawnAt = tick + respawnDelay;
   return next;
+}
+
+/** Repaint every `fromId` territory cell as `toId` — used when a kill hands the victim's land to the killer. */
+function transferTerritory(grid: CellState[][], fromId: string, toId: string): CellState[][] {
+  let changed = false;
+  const next = grid.map((row) =>
+    row.map((cell): CellState => {
+      if (cell.kind === "territory" && cell.playerId === fromId) {
+        changed = true;
+        return { kind: "territory", playerId: toId };
+      }
+      return cell;
+    }),
+  );
+  return changed ? next : grid;
 }
 
 function respawnPlayer(grid: CellState[][], player: PlayerState, spawn: Vec2): CellState[][] {
@@ -168,6 +189,33 @@ function inBounds(state: GameState, cell: Vec2): boolean {
   return cell.row >= 0 && cell.row < state.rowCount && cell.col >= 0 && cell.col < state.colCount;
 }
 
+/** True while some fully-neutral 3x3 pocket still exists — i.e. an eliminated player could still respawn. */
+function boardHasOpenSpawn(grid: CellState[][]): boolean {
+  const rows = grid.length;
+  const cols = grid[0]?.length ?? 0;
+  for (let row = BASE_RADIUS; row < rows - BASE_RADIUS; row++) {
+    for (let col = BASE_RADIUS; col < cols - BASE_RADIUS; col++) {
+      if (isAreaFree(grid, { row, col }, BASE_RADIUS)) return true;
+    }
+  }
+  return false;
+}
+
+/** The match is decided once one player holds every cell, or is the last alive with nowhere for the dead to respawn. */
+function findWinner(state: GameState, players: Record<string, PlayerState>, grid: CellState[][]): string | null {
+  const roster = Object.values(players);
+  if (roster.length < 2) return null;
+
+  const totalCells = state.rowCount * state.colCount;
+  const conqueror = roster.find((p) => p.ownedCount === totalCells);
+  if (conqueror) return conqueror.id;
+
+  const alive = roster.filter((p) => p.alive);
+  if (alive.length === 1 && !boardHasOpenSpawn(grid)) return alive[0].id;
+
+  return null;
+}
+
 function decideBotFacing(state: GameState, player: PlayerState): Direction {
   const p = player.profile;
   const candidates = ALL_DIRECTIONS.filter((d) => d !== OPPOSITE[player.facing] || player.trail.length === 0);
@@ -179,11 +227,19 @@ function decideBotFacing(state: GameState, player: PlayerState): Direction {
     // wasteful, not fatal — rank it well below any real move but above suicide.
     if (!inBounds(state, next)) return p.offBoardPenalty;
     const cell = state.grid[next.row][next.col];
-    // Crossing our own trail now closes the loop and banks the capture instead
-    // of killing us — worth it once the trail is long, wasteful when it's short.
-    if (cell.kind === "trail" && cell.playerId === player.id) return homesick ? p.closeLoopReward : p.earlyLoopPenalty;
     const distanceToHome = Math.abs(next.row - player.home.row) + Math.abs(next.col - player.home.col);
-    if (homesick) return -distanceToHome;
+    // Crossing our own wake no longer banks anything — the loop only closes back
+    // on our own territory. Homesick, treat the wake as clear path home; while
+    // exploring, still steer clear so the trail doesn't tangle into itself.
+    if (cell.kind === "trail" && cell.playerId === player.id) {
+      return homesick ? -distanceToHome : p.earlyLoopPenalty;
+    }
+    if (homesick) {
+      // Diving back onto our own colour with a trail out is the capture — pull
+      // hard toward it once we're close.
+      const banking = cell.kind === "territory" && cell.playerId === player.id && player.trail.length > 0;
+      return banking ? p.closeLoopReward - distanceToHome : -distanceToHome;
+    }
     const preferUnclaimed = cell.kind === "neutral" ? p.neutralBonus : 0;
     return preferUnclaimed - distanceToHome * p.homePull + Math.random() * p.jitter;
   }
@@ -201,13 +257,15 @@ function decideBotFacing(state: GameState, player: PlayerState): Direction {
 }
 
 export function stepGame(state: GameState): GameState {
+  // Match is over — hand back the frozen state untouched.
+  if (state.winnerId) return state;
+
   let grid = state.grid;
   const rules = state.rules ?? DEFAULT_GAME_RULES;
   const players: Record<string, PlayerState> = {};
   for (const [id, p] of Object.entries(state.players)) players[id] = { ...p, trail: [...p.trail] };
 
   const nextTick = state.tick + 1;
-  let eliminationOccurred = false;
 
   for (const player of Object.values(players)) {
     if (player.alive || player.respawnAt === null || player.respawnAt > state.tick) continue;
@@ -245,23 +303,49 @@ export function stepGame(state: GameState): GameState {
       continue;
     }
 
-    let targetCell = grid[next.row][next.col];
+    const targetCell = grid[next.row][next.col];
 
-    // Running into your own live trail is not a death — it pinches the loop
-    // closed. Anyone else's trail is still an elimination.
-    const closingOnOwnTrail = targetCell.kind === "trail" && targetCell.playerId === player.id;
+    // Running over your own live trail neither kills you nor closes the loop —
+    // you sail straight through it. The wake only becomes territory once you
+    // make it all the way back to your own colour. Anyone else's trail is still
+    // an elimination.
+    const onOwnTrail = targetCell.kind === "trail" && targetCell.playerId === player.id;
 
     if (targetCell.kind === "trail" && targetCell.playerId !== player.id) {
       const victim = players[targetCell.playerId];
-      grid = eliminate(grid, victim, nextTick, rules.respawnDelayTicks);
+
+      // Cutting a rival's trail is a capture. Their whole wake, the ground they
+      // still held, and your own wake all flip to your colour — one connected
+      // bridge running from your land, along both trails, to the territory
+      // you've just seized. The victim is sunk and must respawn.
+      grid = claimCells(grid, victim.trail, player.id);
+      grid = claimCells(grid, [next], player.id);
+      grid = claimCells(grid, player.trail, player.id);
+      grid = transferTerritory(grid, victim.id, player.id);
+      grid = resolveCapture(grid, player.id);
+
+      victim.alive = false;
+      victim.trail = [];
+      victim.queuedFacing = null;
+      victim.respawnAt = nextTick + rules.respawnDelayTicks;
+
       player.kills += 1;
-      eliminationOccurred = true;
-      targetCell = grid[next.row][next.col]; // now neutral
+      player.trail = [];
+      player.head = next;
+
+      // The capture fill can still swallow a pocket of a *third* player's land;
+      // resolve their remaining territory the same way a normal capture does.
+      for (const otherId of state.playerOrder) {
+        if (otherId === player.id || otherId === victim.id) continue;
+        const other = players[otherId];
+        grid = resolveTerritorySplit(grid, other.id, [other.head, other.home]);
+      }
+      continue;
     }
 
     const reenteringOwnLand = targetCell.kind === "territory" && targetCell.playerId === player.id;
 
-    if (player.trail.length > 0 && (closingOnOwnTrail || reenteringOwnLand)) {
+    if (player.trail.length > 0 && reenteringOwnLand) {
       grid = resolveCapture(grid, player.id);
       player.trail = [];
       player.head = next;
@@ -270,7 +354,9 @@ export function stepGame(state: GameState): GameState {
         const other = players[otherId];
         grid = resolveTerritorySplit(grid, other.id, [other.head, other.home]);
       }
-    } else if (reenteringOwnLand) {
+    } else if (reenteringOwnLand || onOwnTrail) {
+      // Back on our own land with no loop to close, or just crossing our own
+      // wake: advance the head, leave the trail untouched.
       player.head = next;
     } else {
       const row = grid[next.row].slice();
@@ -282,21 +368,20 @@ export function stepGame(state: GameState): GameState {
     }
   }
 
-  if (eliminationOccurred) {
-    // A kill wipes the victim's trail back to neutral. If that trail had been
-    // plowed straight through another player's territory (enemy land is fair
-    // game to trail across), those cells are now a neutral channel that can
-    // leave part of that territory cut off from its base — the same split a
-    // capture causes, and never otherwise resolved because no loop closed.
-    for (const id of state.playerOrder) {
-      const other = players[id];
-      grid = resolveTerritorySplit(grid, other.id, [other.head, other.home]);
-    }
-  }
-
   for (const player of Object.values(players)) {
     player.ownedCount = countOwnedCells(grid, player.id);
   }
 
-  return { rowCount: state.rowCount, colCount: state.colCount, grid, players, playerOrder: state.playerOrder, tick: nextTick, rules };
+  const winnerId = findWinner(state, players, grid);
+
+  return {
+    rowCount: state.rowCount,
+    colCount: state.colCount,
+    grid,
+    players,
+    playerOrder: state.playerOrder,
+    tick: nextTick,
+    rules,
+    winnerId,
+  };
 }

@@ -26,8 +26,8 @@ counting *are* the capture and elimination logic, not just a visualization.
 Players are boats claiming ocean grid squares as land. You start on a small island
 (your base). Sailing off your own territory leaves a wake (trail) behind you; sailing
 back onto your own territory closes the loop and everything the loop encircled — trail
-included — becomes new land. Touch anyone's wake (including your own) before it closes
-and you sink.
+included — becomes new land. Touch a *rival's* wake before it closes and you sink; your
+own wake you sail straight through (the loop only ever closes on your own territory).
 
 Same shape as Paper.io/`land-grab`-style mobile games, but movement is grid-discrete
 (4-directional, one cell per tick) rather than continuous, so the whole simulation is
@@ -43,9 +43,12 @@ the four orthogonal neighbors.
 4. Moving onto a cell that is **already your own territory**, while you have an active
    trail, **closes the loop** → run the capture fill (below), converting the trail plus
    everything it encircled into territory, then clear the trail.
-5. Moving onto **any trail cell** (yours or an opponent's) **eliminates** you (see
-   [Elimination rules](#elimination-rules)).
-6. Score = total owned cell count. Optional match end: time limit or last-player-standing.
+5. Moving onto an **opponent's trail cell** **eliminates** you (see
+   [Elimination rules](#elimination-rules)). Your own trail you pass straight through —
+   see the [move-resolution table](#what-happens-when-you-move-onto-a-cell).
+6. Score = total owned cell count. The match ends when one player holds the whole board,
+   or is the last one alive with nowhere left for the dead to respawn — see
+   [Match end & game records](#match-end--game-records).
 
 ## Implemented rules (Phase 0 demo)
 
@@ -94,8 +97,8 @@ Resolved player-by-player in a fixed order each tick:
 | **Neutral** | Painted as your trail; you advance onto it. |
 | **Your own territory**, no live trail | You simply move onto it. |
 | **Your own territory**, with a live trail | **Loop closes** → capture fill (below), then advance. |
-| **Your own trail** | **Loop closes** — same capture as re-entering your own land. This is *not* a death. (Deviates from classic Paper.io and from [Elimination rules](#elimination-rules) above.) |
-| **An opponent's trail** | That opponent is **eliminated** (below); their trail is wiped to neutral; your kill count increments; you advance onto the now-neutral cell, laying trail. |
+| **Your own trail** | **You sail straight through it** — no death, and *no* capture. The wake only becomes territory once you make it all the way back onto your own colour, so crossing your own trail just lets the loop keep going. (Deviates from classic Paper.io, where self-crossing kills.) |
+| **An opponent's trail** | **You cut them — and it counts as a capture.** Their *entire* wake, your *entire* wake, and every cell they still owned all flip to your colour, welded into one connected bridge from your land to the ground you just seized (`resolveCapture` also fills any pocket the two wakes enclosed). Your trail clears; your head sits on the cut cell (now yours); kill count increments. The victim is sunk and must respawn. |
 | **An opponent's territory** | Currently overwritten with your trail — you can plow straight through enemy land, turning each crossed cell into your wake. (The plan wanted this treated as a wall; the demo does not do that yet.) |
 | **Off the board edge** | **Not a death.** You hold position for the tick, still facing the wall, so you keep sitting still until you steer to a direction that stays on the board (a bot re-picks next tick). |
 
@@ -117,24 +120,70 @@ When a loop closes:
    scan restricted to one player's cells.
 
 Your trail is then cleared and your head sits on the cell you just entered (now your
-territory).
+territory). **Cutting an opponent's trail runs this same fill** — see
+[Elimination & respawn](#elimination--respawn).
 
 ### Elimination & respawn
 
-- **Elimination** (stepping onto an opponent's trail): your `alive` flag goes false,
-  your in-progress trail reverts to neutral (territory you already owned is untouched),
-  and a respawn is scheduled for `RESPAWN_DELAY_TICKS = 12` ticks later.
-- **A kill re-runs split resolution for everyone.** Because a trail can be plowed
-  straight through enemy land, wiping the dead player's trail back to neutral can
-  leave a chunk of some *other* player's territory cut off from their piece with no
-  loop ever having closed. So after any elimination the game runs
-  `resolveTerritorySplit` for every player, the same pass a capture triggers, and
-  any now-orphaned fragment reverts to neutral.
+- **Elimination** (stepping onto an opponent's trail): the victim's `alive` flag goes
+  false, their trail is emptied, and a respawn is scheduled for
+  `RESPAWN_DELAY_TICKS = 12` ticks later.
+- **A trail cut is a capture for the killer.** In one step the game:
+  1. `claimCells` — paints the victim's whole wake, the killer's whole wake, and the
+     cut cell as the killer's territory;
+  2. `transferTerritory` — repaints every cell the victim still owned the killer's colour;
+  3. `resolveCapture` for the killer — folds all of the above in and fills any pocket the
+     two wakes had enclosed.
+
+  The result is a single connected bridge: killer's land → killer's old wake → cut cell →
+  victim's old wake → victim's seized land. A bot that cuts your trail takes yours the
+  same way.
+- **Third parties still get split resolution.** The capture fill in step 3 can swallow a
+  pocket of some *other* player's territory, so `resolveTerritorySplit` runs for every
+  player except the killer and the victim, exactly as a normal capture does — any
+  fragment orphaned from that player's piece reverts to neutral.
 - **Respawn needs a clear 3×3.** When the timer is up, the game looks for a fully-neutral
   3×3 pocket, scanning outward from your old home. If none exists yet you **stay dead**,
   and it re-checks every tick until one opens up (freed by a later capture, split, or
   another player dying). Only then do you get a fresh 3×3 base at that spot, facing up,
   with the human start gate re-armed.
+
+### Match end & game records
+
+`stepGame` sets `GameState.winnerId` (otherwise `null`) once the board is **decided**:
+
+- one player's `ownedCount` equals every cell on the board, **or**
+- exactly one player is still `alive` and no fully-neutral 3×3 pocket exists anywhere,
+  so none of the eliminated players can ever come back.
+
+Once `winnerId` is set the sim **freezes** — `stepGame` returns the same state untouched.
+The demo (`LandGrabDemo`) reacts by pausing the tick loop and popping an
+`AlertDialog` with the winner, tick count, match time, board size, and the winner's cell
+count / kills.
+
+It also writes a **game record** — there's no backend yet, so `saveGameRecord`
+(`src/features/landGrab/gameRecord.ts`) prepends it to a capped list (50) in
+`localStorage` under `landgrab:game-records`. `buildGameRecord(state)` produces:
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "endedAt": "2026-09-10T12:00:00.000Z",
+  "ticks": 437,
+  "durationMs": 69920,                 // ticks * TICK_MS
+  "board": { "rows": 16, "cols": 24, "totalCells": 384 },
+  "rules": { "respawnDelayTicks": 12 },
+  "winner": {
+    "id": "bot-red", "label": "Red Bot", "color": "#f87171",
+    "isBot": true, "autopilot": false,
+    "ownedCount": 384, "ownedFraction": 1, "kills": 3, "alive": true,
+    "profile": { "homesickTrailLength": 9, "offBoardPenalty": -1000, /* …BotProfile */ }
+  },
+  "players": [ /* one record per player, in playerOrder, same shape as `winner` */ ]
+}
+```
+
+Swapping in a real API later is just replacing `saveGameRecord` / `loadGameRecords`.
 
 ### Bots
 
@@ -142,10 +191,11 @@ Each tick, every living bot scores its candidate directions (all four except a s
 reversal) and takes the best:
 
 - **Off the board** → heavily penalised (it would only waste a tick holding still).
-- **Onto its own trail** → attractive once the trail is long enough to be worth banking
-  (`BOT_HOMESICK_TRAIL_LENGTH = 9`+ cells), avoided while the trail is short.
-- Once the trail reaches 9+ cells the bot turns **homesick** and simply heads for its
-  home cell (minimise Manhattan distance).
+- **Onto its own trail** → just clear path once homesick; avoided while exploring so the
+  wake doesn't tangle into itself. Crossing it no longer banks anything.
+- Once the trail reaches 9+ cells (`BOT_HOMESICK_TRAIL_LENGTH`) the bot turns **homesick**
+  and heads for its home cell (minimise Manhattan distance) — the loop closes when it
+  dives back onto its own territory, not its wake.
 - Otherwise it prefers unclaimed neutral cells, with a slight pull back toward home and a
   little random jitter so the three bots don't move in lockstep.
 
@@ -171,6 +221,9 @@ stationary player at one corner biases the standings.
   scorer with its own editable profile.
 - **Full screen** (in the leaderboard panel) expands the grid to fill the window;
   because the cell count changes, toggling restarts the match. **Esc** exits.
+- **Game over** — when the match is decided ([above](#match-end--game-records)) the loop
+  pauses and a dialog shows the winner and match stats; **Play again** restarts,
+  **Dismiss** leaves the final board on screen.
 
 ## Algorithm mapping — this is the point of the project
 
@@ -253,13 +306,16 @@ for that player's component — Union-Find is an optimization for the common cas
 
 ## Elimination rules
 
-- Moving onto **any** trail cell (yours or an opponent's) → you sink. Your trail clears,
-  you respawn after a short delay with a small fresh territory blob elsewhere on the
-  board. (Standard Paper.io: self-crossing your own wake kills you too.)
-- Moving onto an opponent's trail additionally **destroys their trail** at the crossing
-  point onward — the classic "cut the other player's tail" kill. Their in-progress
-  capture is voided; any territory they already owned is untouched (no cut-resolution
-  needed since a voided trail was never converted to territory).
+- Moving onto an **opponent's** trail cell → you sink. Your trail clears, you respawn
+  after a short delay with a small fresh territory blob elsewhere on the board.
+  (Standard Paper.io also kills you for self-crossing your own wake; **this demo does
+  not** — you sail straight through your own trail, and the loop only closes back on
+  your own territory. See the [move-resolution table](#what-happens-when-you-move-onto-a-cell).)
+- The cut is a **capture for you**, not just a kill. Their whole wake, your whole wake,
+  and **every cell they already owned** are all repainted your colour and welded into one
+  connected bridge (`claimCells` → `transferTerritory` → `resolveCapture`) — the cut
+  takes their standing land, not just their loop. The victim keeps nothing and must
+  respawn.
 - Cutting through *existing owned territory* (not a trail) never happens — you can only
   ever walk onto neutral cells (leaves a trail) or your own territory (closes a loop) or
   someone's trail (a kill/death event); walking onto an opponent's *territory* cell is
