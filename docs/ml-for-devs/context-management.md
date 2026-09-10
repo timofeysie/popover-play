@@ -7,6 +7,7 @@ The limits described in [Threshold Decay and Other Instruction Limits](/attentio
 - `/context` see the number of tokens in the current context
 - `/clear` start a new context
 - `/compact` manually compresses your long conversation history into a focused summary to free up tokens in your context window
+- `resume` pick up where you left of with a previous context session
 
 
 ## Keep CLAUDE.md and prompts short
@@ -89,3 +90,28 @@ The mechanisms don't change by editor — they're properties of the underlying m
 - **It's proactive, not reactive.** Once a context is already diluted, no amount of "please pay attention to X" reliably recovers the lost compliance — the fix is upstream, in what got added to context in the first place.
 - **It composes with everything else in this repo's `/notes`.** The [lint rules](/notes/lint-rules) and mitigation strategies elsewhere in `/notes` already tell Claude what to do; context management is what keeps those instructions actually visible instead of buried past the point where they get read.
 - **It scales with session length**, where prompt wording alone doesn't — a well-placed rule in a 5-message session and a 500-message session need different handling, and only session-level management (clearing, compacting, delegating) adapts to that.
+
+## Resuming a session
+
+When you quit the Claude Code CLI, you will see somethings like this:
+
+```
+Resume this session with:
+claude --resume 714b9434-2454-4209-b741-c71180cd1216
+```
+
+You can get a list of these sessions with actual human readable titles by entering the `/resume` command.
+
+![The `/resume` command listing past sessions with human-readable titles](/notes/resume-list.png)
+
+This list containst the title, relative time, git branch and size. The size of the session's transcript file on disk: the JSONL log of the whole conversation (every prompt, response, tool call, and tool result). It isn't the live context-window token count, but it's a good proxy for how much history you'd reload by resuming — the *1.9MB* session carries roughly seven times the transcript of the *278.6KB* one. Bytes aren't tokens (the file includes JSON structure and full tool-result payloads that may be truncated or summarized on reload), so read it as a "how heavy is this session" ranking, not a literal token figure.
+
+Resuming is the opposite of `/clear`: `--resume` and `/resume` replay the *entire* prior conversation — every tool result, dead-end search, and superseded plan comes back with it. So the limits from [Threshold Decay and Other Instruction Limits](/attention-limits) apply the moment the session reloads, and a few practices keep resume from quietly dropping you into the Dumb Zone:
+
+- **Only resume to continue the same task.** Resuming for unrelated work drags that session's full transcript into the new task and dilutes attention on it for no benefit — the same anti-pattern as skipping `/clear` between tasks. For genuinely new work, start a fresh session instead of resuming a convenient old one.
+- **Check `/context` right after resuming.** You pick up at whatever token count you left off at, plus overhead — if you quit a long session near the 40% line, you resume straight back into it. Resuming is not a reset, so treat the first thing you do as measuring where the reloaded context sits.
+- **`/compact` early if the resumed session is already long.** Shed the exploratory back-and-forth before stacking new turns on top, rather than pushing an already-heavy context further past the point where compliance and coherence drift.
+- **Restate decisions still in play after a resume or compact.** Compaction summarizes; a nuance that drove an earlier decision can be lost in the compressed summary. Say it again explicitly rather than trusting it stayed legible through the resume.
+- **Match the session to the task using the titles, don't just grab the most recent.** The human-readable list exists so you can pick the session you actually mean to continue — resuming the wrong long session loads a large irrelevant context you then have to `/clear` anyway.
+
+
