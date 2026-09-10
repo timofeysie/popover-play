@@ -16,6 +16,8 @@ import { createBotMemory, DEFAULT_BOT_TYPE, type BotType } from "./botStrategy";
 import { BotProfilePanel } from "./BotProfilePanel";
 import { MatchRecordsPanel } from "./MatchRecordsPanel";
 import { buildGameRecord, saveGameRecord, type LandGrabGameRecord } from "./gameRecord";
+import { createReplayLog, recordFrame, type ReplayLog } from "./replayLog";
+import { LandGrabReplay } from "./LandGrabReplay";
 import { loadUserProfile, resolveUsername, saveUserProfile } from "./userProfile";
 import type { Direction } from "./types";
 import {
@@ -250,6 +252,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   const [speed, setSpeed] = useState(2);
   const [showProfiles, setShowProfiles] = useState(false);
   const [showRecords, setShowRecords] = useState(false);
+  const [showReplay, setShowReplay] = useState(false);
   const [profiles, setProfiles] = useState<Record<string, BotProfile>>(makeInitialProfiles);
   const [autopilot, setAutopilot] = useState<Record<string, boolean>>(makeInitialAutopilot);
   const [botTypes, setBotTypes] = useState<Record<string, BotType>>(makeInitialBotTypes);
@@ -283,6 +286,12 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   const [tick, setTick] = useState(0);
   const [restartToken, setRestartToken] = useState(0);
   const [gameOver, setGameOver] = useState<LandGrabGameRecord | null>(null);
+  // Frozen at game over for the replay viewer. Kept across restarts so the
+  // Replay button stays useful — the next finished match overwrites it.
+  const [replay, setReplay] = useState<ReplayLog | null>(null);
+  // The live recording for the in-progress match; read/written only inside the
+  // Phaser tick loop. `null` on the preview card (`hideControls`), which never records.
+  const replayLogRef = useRef<ReplayLog | null>(null);
   // Guards the once-per-match record write from inside the Phaser tick loop.
   const recordedRef = useRef(false);
   // Read inside the tick loop; the preview card (hideControls) doesn't record or pop a dialog.
@@ -371,6 +380,10 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
     setPlayers(stateHolderRef.current.current.players);
     setTick(0);
     setGameOver(null);
+    setShowReplay(false);
+    replayLogRef.current = hideControlsRef.current
+      ? null
+      : createReplayLog(stateHolderRef.current.current);
     recordedRef.current = false;
     controlRef.current.paused = false;
     setPaused(false);
@@ -396,6 +409,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
         rulesRef,
         cellSize: dims.cell,
         onTick: (state: GameState) => {
+          if (replayLogRef.current) recordFrame(replayLogRef.current, state);
           setPlayers({ ...state.players });
           setTick(state.tick);
           if (!hideControlsRef.current && state.winnerId && !recordedRef.current) {
@@ -403,6 +417,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
             const record = buildGameRecord(state);
             saveGameRecord(record);
             setGameOver(record);
+            setReplay(replayLogRef.current);
             controlRef.current.paused = true;
             setPaused(true);
           }
@@ -491,6 +506,14 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
               >
                 {showRecords ? "Hide records" : "Records"}
               </button>
+              <button
+                onClick={() => setShowReplay((s) => !s)}
+                disabled={!replay}
+                className="px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                aria-expanded={showReplay}
+              >
+                {showReplay ? "Hide replay" : "Replay"}
+              </button>
               <ul className="flex flex-wrap gap-4 text-sm min-[1400px]:hidden">
                 {leaderboard.map((player) => (
                   <li key={player.id} className="flex items-center gap-2">
@@ -546,6 +569,9 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
       </div>
       {!hideControls && showRecords && (
         <MatchRecordsPanel key={gameOver?.endedAt ?? "records"} />
+      )}
+      {!hideControls && showReplay && replay && (
+        <LandGrabReplay log={replay} onClose={() => setShowReplay(false)} />
       )}
       {!hideControls && showProfiles && (
         <BotProfilePanel
@@ -615,6 +641,17 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel onClick={() => setGameOver(null)}>Dismiss</AlertDialogCancel>
+              {replay && (
+                <AlertDialogAction
+                  onClick={() => {
+                    setGameOver(null);
+                    setShowReplay(true);
+                  }}
+                  className="bg-secondary text-secondary-foreground hover:bg-secondary/90"
+                >
+                  Watch replay
+                </AlertDialogAction>
+              )}
               <AlertDialogAction onClick={restart}>Play again</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

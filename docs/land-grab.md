@@ -245,7 +245,12 @@ including why a stationary player at one corner biases the standings.
   because the cell count changes, toggling restarts the match. **Esc** exits.
 - **Game over** — when the match is decided ([above](#match-end--game-records)) the loop
   pauses and a dialog shows the winner and match stats; **Play again** restarts,
-  **Dismiss** leaves the final board on screen.
+  **Dismiss** leaves the final board on screen, **Watch replay** opens the replay viewer.
+- **Replay** — every match is recorded tick by tick into an in-memory `ReplayLog`; the
+  **Replay** control (and the game-over dialog) opens a scrubbable canvas playback with
+  per-player facing / cell counts, for eyeballing what the capture and split logic did.
+  In-memory only, not persisted; full reference in
+  [`docs/land-grab/replays.md`](./land-grab/replays.md).
 
 ## Algorithm mapping — this is the point of the project
 

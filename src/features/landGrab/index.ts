@@ -29,6 +29,16 @@ export {
   MAX_STORED_GAME_RECORDS,
 } from "./gameRecord";
 export type { LandGrabGameRecord, LandGrabPlayerRecord } from "./gameRecord";
+export { createReplayLog, recordFrame, frameGridAt, MAX_REPLAY_TICKS } from "./replayLog";
+export type {
+  ReplayLog,
+  ReplayFrame,
+  ReplayPlayerFrame,
+  ReplayCellChange,
+  ReplayPlayerMeta,
+} from "./replayLog";
+export { LandGrabReplay } from "./LandGrabReplay";
+export type { LandGrabReplayProps } from "./LandGrabReplay";
 export { rankPlayers, matchRating, RATING_WEIGHTS } from "./recordStats";
 export type { PlayerRanking } from "./recordStats";
 export { MatchRecordsPanel } from "./MatchRecordsPanel";
