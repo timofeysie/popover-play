@@ -157,8 +157,8 @@ The AI is intentionally minimal. It has **no model of the other players** and **
 lookahead past one cell**. In particular:
 
 - **No offence.** It never steers toward an opponent's trail to cut them, even though a
-  cut is a free kill that also captures both wakes and every cell that player owned into
-  one connected bridge. Enemy trail scores the same as any other non-neutral cell.
+  cut captures both wakes and every cell that player owned into one connected bridge and
+  sinks them. Enemy trail scores the same as any other non-neutral cell.
 - **No evasion.** It doesn't dodge opponents' heads or trails, and doesn't avoid driving
   through enemy territory (which is legal — you plow trail straight through it).
 - **No self-trap avoidance** beyond the single adjacent cell. A bot can wander its own

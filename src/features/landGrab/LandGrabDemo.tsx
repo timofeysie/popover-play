@@ -534,8 +534,8 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
                       <dd className="tabular-nums text-foreground">
                         {gameOver.winner.ownedCount} ({Math.round(gameOver.winner.ownedFraction * 100)}%)
                       </dd>
-                      <dt className="text-muted-foreground">Winner kills</dt>
-                      <dd className="tabular-nums text-foreground">{gameOver.winner.kills}</dd>
+                      <dt className="text-muted-foreground">Winner captures</dt>
+                      <dd className="tabular-nums text-foreground">{gameOver.winner.captures}</dd>
                     </dl>
                   )}
                   <p className="text-xs text-muted-foreground">

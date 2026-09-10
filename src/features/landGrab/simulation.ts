@@ -38,7 +38,8 @@ export interface PlayerState extends PlayerConfig {
   trail: Vec2[];
   ownedCount: number;
   respawnAt: number | null;
-  kills: number;
+  /** How many times this player has cut a rival's trail and seized their land. */
+  captures: number;
   /** Bots move every tick from the start; a human sits still at home until their first key press. */
   hasStarted: boolean;
   /** The decision parameters this player's moves are scored against (used when a bot or on autopilot). */
@@ -115,7 +116,7 @@ export function createInitialGameState(
       trail: [],
       ownedCount: 0,
       respawnAt: null,
-      kills: 0,
+      captures: 0,
       hasStarted: config.isBot || autopilot,
     };
   });
@@ -145,7 +146,7 @@ export function setPlayerFacing(state: GameState, playerId: string, direction: D
   player.hasStarted = true;
 }
 
-/** Paint a set of cells as `playerId` territory — folds both wakes into the killer's land on a trail cut. */
+/** Paint a set of cells as `playerId` territory — folds both wakes into the capturing player's land on a trail cut. */
 function claimCells(grid: CellState[][], cells: Vec2[], playerId: string): CellState[][] {
   if (cells.length === 0) return grid;
   const next = grid.map((row) => row.slice());
@@ -158,7 +159,7 @@ function claimCells(grid: CellState[][], cells: Vec2[], playerId: string): CellS
   return next;
 }
 
-/** Repaint every `fromId` territory cell as `toId` — used when a kill hands the victim's land to the killer. */
+/** Repaint every `fromId` territory cell as `toId` — used when a trail cut hands one player's land to another. */
 function transferTerritory(grid: CellState[][], fromId: string, toId: string): CellState[][] {
   let changed = false;
   const next = grid.map((row) =>
@@ -305,7 +306,7 @@ export function stepGame(state: GameState): GameState {
 
     const targetCell = grid[next.row][next.col];
 
-    // Running over your own live trail neither kills you nor closes the loop —
+    // Running over your own live trail neither sinks you nor closes the loop —
     // you sail straight through it. The wake only becomes territory once you
     // make it all the way back to your own colour. Anyone else's trail is still
     // an elimination.
@@ -329,7 +330,7 @@ export function stepGame(state: GameState): GameState {
       victim.queuedFacing = null;
       victim.respawnAt = nextTick + rules.respawnDelayTicks;
 
-      player.kills += 1;
+      player.captures += 1;
       player.trail = [];
       player.head = next;
 

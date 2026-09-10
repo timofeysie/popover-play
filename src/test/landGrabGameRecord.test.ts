@@ -23,8 +23,8 @@ function decidedState(): GameState {
     tick: 437,
     winnerId: "bot-red",
     players: {
-      you: { ...base.players.you, ownedCount: 0, alive: false, kills: 1 },
-      "bot-red": { ...base.players["bot-red"], ownedCount: 120, alive: true, kills: 3 },
+      you: { ...base.players.you, ownedCount: 0, alive: false, captures: 1 },
+      "bot-red": { ...base.players["bot-red"], ownedCount: 120, alive: true, captures: 3 },
     },
   };
 }
@@ -44,7 +44,7 @@ describe("buildGameRecord", () => {
     expect(record.winner.label).toBe("Red Bot");
     expect(record.winner.color).toBe("#f87171");
     expect(record.winner.isBot).toBe(true);
-    expect(record.winner.kills).toBe(3);
+    expect(record.winner.captures).toBe(3);
     expect(record.winner.ownedCount).toBe(120);
     expect(record.winner.ownedFraction).toBeCloseTo(1);
     expect(record.winner.profile).toEqual(DEFAULT_BOT_PROFILE);

@@ -32,7 +32,8 @@ export interface LandGrabPlayerRecord {
   ownedCount: number;
   /** Share of the board this player held at the end, 0..1. */
   ownedFraction: number;
-  kills: number;
+  /** Rival trails this player cut (each seizing that player's land). */
+  captures: number;
   alive: boolean;
   /** The decision parameters this player was running when the match ended. */
   profile: BotProfile;
@@ -57,7 +58,7 @@ function toPlayerRecord(
     autopilot: player.autopilot,
     ownedCount: player.ownedCount,
     ownedFraction: totalCells > 0 ? player.ownedCount / totalCells : 0,
-    kills: player.kills,
+    captures: player.captures,
     alive: player.alive,
     profile: { ...player.profile },
   };

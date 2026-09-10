@@ -97,8 +97,8 @@ Resolved player-by-player in a fixed order each tick:
 | **Neutral** | Painted as your trail; you advance onto it. |
 | **Your own territory**, no live trail | You simply move onto it. |
 | **Your own territory**, with a live trail | **Loop closes** → capture fill (below), then advance. |
-| **Your own trail** | **You sail straight through it** — no death, and *no* capture. The wake only becomes territory once you make it all the way back onto your own colour, so crossing your own trail just lets the loop keep going. (Deviates from classic Paper.io, where self-crossing kills.) |
-| **An opponent's trail** | **You cut them — and it counts as a capture.** Their *entire* wake, your *entire* wake, and every cell they still owned all flip to your colour, welded into one connected bridge from your land to the ground you just seized (`resolveCapture` also fills any pocket the two wakes enclosed). Your trail clears; your head sits on the cut cell (now yours); kill count increments. The victim is sunk and must respawn. |
+| **Your own trail** | **You sail straight through it** — no death, and *no* capture. The wake only becomes territory once you make it all the way back onto your own colour, so crossing your own trail just lets the loop keep going. (Deviates from classic Paper.io, where self-crossing sinks you.) |
+| **An opponent's trail** | **You cut them — and it counts as a capture.** Their *entire* wake, your *entire* wake, and every cell they still owned all flip to your colour, welded into one connected bridge from your land to the ground you just seized (`resolveCapture` also fills any pocket the two wakes enclosed). Your trail clears; your head sits on the cut cell (now yours); your capture count increments. The victim is sunk and must respawn. |
 | **An opponent's territory** | Currently overwritten with your trail — you can plow straight through enemy land, turning each crossed cell into your wake. (The plan wanted this treated as a wall; the demo does not do that yet.) |
 | **Off the board edge** | **Not a death.** You hold position for the tick, still facing the wall, so you keep sitting still until you steer to a direction that stays on the board (a bot re-picks next tick). |
 
@@ -128,20 +128,21 @@ territory). **Cutting an opponent's trail runs this same fill** — see
 - **Elimination** (stepping onto an opponent's trail): the victim's `alive` flag goes
   false, their trail is emptied, and a respawn is scheduled for
   `RESPAWN_DELAY_TICKS = 12` ticks later.
-- **A trail cut is a capture for the killer.** In one step the game:
-  1. `claimCells` — paints the victim's whole wake, the killer's whole wake, and the
-     cut cell as the killer's territory;
-  2. `transferTerritory` — repaints every cell the victim still owned the killer's colour;
-  3. `resolveCapture` for the killer — folds all of the above in and fills any pocket the
-     two wakes had enclosed.
+- **A trail cut is a capture for the player who made it.** In one step the game:
+  1. `claimCells` — paints the victim's whole wake, the capturing player's whole wake,
+     and the cut cell as the capturing player's territory;
+  2. `transferTerritory` — repaints every cell the victim still owned the capturing
+     player's colour;
+  3. `resolveCapture` for the capturing player — folds all of the above in and fills any
+     pocket the two wakes had enclosed.
 
-  The result is a single connected bridge: killer's land → killer's old wake → cut cell →
-  victim's old wake → victim's seized land. A bot that cuts your trail takes yours the
-  same way.
+  The result is a single connected bridge: capturing player's land → their old wake →
+  cut cell → victim's old wake → victim's seized land. A bot that cuts your trail takes
+  yours the same way. `PlayerState.captures` counts these.
 - **Third parties still get split resolution.** The capture fill in step 3 can swallow a
   pocket of some *other* player's territory, so `resolveTerritorySplit` runs for every
-  player except the killer and the victim, exactly as a normal capture does — any
-  fragment orphaned from that player's piece reverts to neutral.
+  player except the capturing player and the victim, exactly as a normal capture does —
+  any fragment orphaned from that player's piece reverts to neutral.
 - **Respawn needs a clear 3×3.** When the timer is up, the game looks for a fully-neutral
   3×3 pocket, scanning outward from your old home. If none exists yet you **stay dead**,
   and it re-checks every tick until one opens up (freed by a later capture, split, or
@@ -159,7 +160,7 @@ territory). **Cutting an opponent's trail runs this same fill** — see
 Once `winnerId` is set the sim **freezes** — `stepGame` returns the same state untouched.
 The demo (`LandGrabDemo`) reacts by pausing the tick loop and popping an
 `AlertDialog` with the winner, tick count, match time, board size, and the winner's cell
-count / kills.
+count / captures.
 
 It also writes a **game record** — there's no backend yet, so `saveGameRecord`
 (`src/features/landGrab/gameRecord.ts`) prepends it to a capped list (50) in
@@ -176,7 +177,7 @@ It also writes a **game record** — there's no backend yet, so `saveGameRecord`
   "winner": {
     "id": "bot-red", "label": "Red Bot", "color": "#f87171",
     "isBot": true, "autopilot": false,
-    "ownedCount": 384, "ownedFraction": 1, "kills": 3, "alive": true,
+    "ownedCount": 384, "ownedFraction": 1, "captures": 3, "alive": true,
     "profile": { "homesickTrailLength": 9, "offBoardPenalty": -1000, /* …BotProfile */ }
   },
   "players": [ /* one record per player, in playerOrder, same shape as `winner` */ ]
@@ -308,17 +309,17 @@ for that player's component — Union-Find is an optimization for the common cas
 
 - Moving onto an **opponent's** trail cell → you sink. Your trail clears, you respawn
   after a short delay with a small fresh territory blob elsewhere on the board.
-  (Standard Paper.io also kills you for self-crossing your own wake; **this demo does
+  (Standard Paper.io also sinks you for self-crossing your own wake; **this demo does
   not** — you sail straight through your own trail, and the loop only closes back on
   your own territory. See the [move-resolution table](#what-happens-when-you-move-onto-a-cell).)
-- The cut is a **capture for you**, not just a kill. Their whole wake, your whole wake,
-  and **every cell they already owned** are all repainted your colour and welded into one
-  connected bridge (`claimCells` → `transferTerritory` → `resolveCapture`) — the cut
-  takes their standing land, not just their loop. The victim keeps nothing and must
+- The cut is a **capture for you**, not just an elimination. Their whole wake, your whole
+  wake, and **every cell they already owned** are all repainted your colour and welded
+  into one connected bridge (`claimCells` → `transferTerritory` → `resolveCapture`) — the
+  cut takes their standing land, not just their loop. The victim keeps nothing and must
   respawn.
 - Cutting through *existing owned territory* (not a trail) never happens — you can only
   ever walk onto neutral cells (leaves a trail) or your own territory (closes a loop) or
-  someone's trail (a kill/death event); walking onto an opponent's *territory* cell is
+  someone's trail (a capture / elimination event); walking onto an opponent's *territory* cell is
   disallowed/treated as a wall, so cuts only happen via the trail-crossing rule, not by
   driving through someone's land.
 
