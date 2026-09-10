@@ -4,47 +4,56 @@ How the computer-controlled boats in `src/features/landGrab/LandGrabDemo.tsx` ch
 their moves. This is a companion to the [`### Bots`](../land-grab.md#bots) summary in
 the main plan — same behaviour, more detail.
 
+> **Archetypes now split.** A default match is **one Rambler (Yellow) vs. two Surveyors
+> (Red, Green) vs. the human**. The Rambler is the original greedy roamer described
+> throughout the first half of this doc; the Surveyor is the deliberate territory
+> farmer in [Archetype: the Surveyor](#archetype-the-surveyor-the-gradual-looping-bot-red--green).
+> Both run through the same one-call-per-tick registry — see
+> [Bot types](#bot-types-solution-architecting).
+
 ## Table of contents
 
 - [TL;DR](#tldr)
 - [The three bots](#the-three-bots)
-- [One shared brain: `decideBotFacing`](#one-shared-brain-decidebotfacing)
+- [The Rambler brain: `decideBotFacing`](#the-rambler-brain-decidebotfacing)
 - [The scoring function](#the-scoring-function)
 - [Behavioural phases](#behavioural-phases)
 - [Tie-breaking and randomness](#tie-breaking-and-randomness)
 - [What the bots deliberately don't do](#what-the-bots-deliberately-dont-do)
-- [Bot types: solution architecting (planned)](#bot-types-solution-architecting-planned)
+- [Bot types: solution architecting](#bot-types-solution-architecting)
 - [Tuning them live in the demo](#tuning-them-live-in-the-demo)
 - [Tuning knobs](#tuning-knobs)
 
 ## TL;DR
 
-There is **one bot AI**, not three. Red, Yellow, and Green all run the identical
-function `decideBotFacing` (`src/features/landGrab/simulation.ts`); they differ only in
-colour, label, and which corner they start in. Each tick a bot scores the (up to four)
-directions it could turn and takes the highest-scoring one. The score is a greedy
-one-cell lookahead — no pathfinding, no model of the other players. Net effect: a bot
-sails out into open water laying wake, and once its trail reaches
-`BOT_HOMESICK_TRAIL_LENGTH` (9) cells it turns "homesick" and beelines back to its own
-territory to close the loop and bank a modest capture, then repeats. Sailing back
-across its own wake does nothing on its own — the loop only closes on home turf.
+Every living bot picks a move the same way: each tick it scores the (up to four)
+directions it could turn with a greedy one-cell lookahead and takes the
+highest-scoring one — no pathfinding, no model of the other players. `decideBotFacing`
+(`src/features/landGrab/simulation.ts`) is now a one-line dispatch to the bot's
+**archetype**, registered in `botStrategy.ts`:
 
-A design for splitting this single brain into distinct **bot archetypes** with their
-own goals — keeping the Yellow Bot on today's logic and giving Red and Green a
-deliberate, territory-farming "gradual looper" — is sketched in
-[Bot types: solution architecting](#bot-types-solution-architecting-planned). That
-section is a plan; none of it is built yet.
+- **Rambler** (Yellow Bot) — the original brain, described in the sections below. Sails
+  out laying wake; once its trail reaches `homesickTrailLength` (9) cells it turns
+  "homesick" and beelines back to its own territory to close the loop and bank a modest
+  capture, then repeats. Crossing its own wake does nothing — the loop only closes on
+  home turf.
+- **Surveyor** (Red & Green Bots) — a deliberate territory farmer. Hugs the frontier of
+  its own land one cell out, sweeps a strip within `maxTrailExposure` of owned ground,
+  then folds it back in once the wake hits `targetTrailLength` or a rival gets close.
+  Bigger, chunkier captures than the Rambler with far less exposed wake. See
+  [Archetype: the Surveyor](#archetype-the-surveyor-the-gradual-looping-bot-red--green).
 
 ## The three bots
 
 Defined by `PLAYER_CONFIGS` in `LandGrabDemo.tsx`. All four players (you + three bots)
-obey identical game rules; `isBot` only decides *who picks the moves*.
+obey identical game rules; `isBot` only decides *who picks the moves*, and `botType`
+decides *which archetype* picks them (`undefined` → `"rambler"`).
 
-| id | Label | Colour | Start corner (default 16×24 board) |
-| --- | --- | --- | --- |
-| `bot-red` | Red Bot | `#f87171` | bottom-right — `(12, 19)` |
-| `bot-yellow` | Yellow Bot | `#facc15` | top-right — `(3, 19)` |
-| `bot-green` | Green Bot | `#4ade80` | bottom-left — `(12, 4)` |
+| id | Label | Colour | Archetype | Start corner (default 16×24 board) |
+| --- | --- | --- | --- | --- |
+| `bot-red` | Red Bot | `#f87171` | `surveyor` | bottom-right — `(12, 19)` |
+| `bot-yellow` | Yellow Bot | `#facc15` | `rambler` | top-right — `(3, 19)` |
+| `bot-green` | Green Bot | `#4ade80` | `surveyor` | bottom-left — `(12, 4)` |
 
 (You, `#38bdf8`, take the top-left corner `(3, 4)`.) Corners come from `startingSpots`
 in `simulation.ts`, inset from the edges by `max(2, floor(rows/5))` rows and
@@ -66,10 +75,18 @@ Bot-specific lifecycle details:
   input-buffering rules that matter for a human ("only the most recent queued turn is
   kept") are moot for bots — they re-decide from scratch every tick.
 
-## One shared brain: `decideBotFacing`
+## The Rambler brain: `decideBotFacing`
+
+> This section and the two after it ([The scoring function](#the-scoring-function),
+> [Behavioural phases](#behavioural-phases)) describe the **Rambler** archetype —
+> Yellow Bot, and the default when `botType` is unset. `decideBotFacing` in
+> `simulation.ts` is now just `strategyFor(player.botType).decide(state, player,
+> player.botMemory)`; the code below lives in `botStrategy.ts` as `ramblerDecide`.
+> The Surveyor's procedure is in
+> [Archetype: the Surveyor](#archetype-the-surveyor-the-gradual-looping-bot-red--green).
 
 ```ts
-function decideBotFacing(state: GameState, player: PlayerState): Direction
+function ramblerDecide(state: GameState, player: PlayerState): Direction
 ```
 
 Called from `stepGame` against a `scratchState` (the grid *after* respawns have been
@@ -135,15 +152,17 @@ at defaults:
 
 ## Behavioural phases
 
-A bot's life cycles through two states, gated purely on trail length:
+A **Rambler**'s life cycles through two states, gated purely on trail length (the
+**Surveyor** has its own `extend` / `return` cycle — see
+[its archetype section](#archetype-the-surveyor-the-gradual-looping-bot-red--green)):
 
 | Phase | Condition | Behaviour |
 | --- | --- | --- |
 | **Explore** | `trail.length < 9` | Wander toward neutral water, jittered, with a 0.01-weight pull back toward home. Still *avoids* its own wake (`-20`) so the trail doesn't tangle into itself. |
 | **Homesick** | `trail.length >= 9` | Ignore neutral/claimed distinctions. Score each move as `-Manhattan(next, home)` → a straight beeline for the base, crossing its own wake freely along the way. Stepping onto its own **territory** while a trail is out adds `closeLoopReward` (`+1`) — that dive back onto home turf is what closes the loop and banks the capture. |
 
-So the loop the bots draw is: strike out ~9 cells into open water, then beeline home
-and close the loop by re-entering their own territory. Captures are small and
+So the loop a Rambler draws is: strike out ~9 cells into open water, then beeline home
+and close the loop by re-entering its own territory. Captures are small and
 frequent rather than large and risky — matching the "simplest useful bot" described in
 the plan's [Open questions](../land-grab.md#open-questions).
 
@@ -160,8 +179,11 @@ the plan's [Open questions](../land-grab.md#open-questions).
 
 ## What the bots deliberately don't do
 
-The AI is intentionally minimal. It has **no model of the other players** and **no
-lookahead past one cell**. In particular:
+Scoped to the **Rambler**. The AI is intentionally minimal: **no model of the other
+players**, **no lookahead past one cell**. The Surveyor chips at the first three of
+these — a hard exposure cap, a "don't step next to a rival head" guard, and an early
+return when a rival closes — but still has no real offence and no multi-cell search. In
+particular the Rambler has:
 
 - **No offence.** It never steers toward an opponent's trail to cut them, even though a
   cut captures both wakes and every cell that player owned into one connected bridge and
@@ -179,12 +201,19 @@ lookahead past one cell**. In particular:
 This is by design — Phase 0 only needs bots good enough to exercise the capture-fill and
 split-resolution algorithms, not to be challenging opponents.
 
-## Bot types: solution architecting (planned)
+## Bot types: solution architecting
 
-> **Status:** design only. Nothing below is implemented. The intent is to agree the
-> archetype list and the registry interface here, then land it in the phases at the
-> end of this section. Until then all three bots still share the one `decideBotFacing`
-> brain described above.
+> **Status:** Phases 2 and 3 have landed — see [Rollout plan](#rollout-plan). The
+> `BotStrategy` interface, the `BOT_STRATEGIES` registry, the `decideBotFacing`
+> dispatcher and the per-bot `botMemory` bag live in
+> `src/features/landGrab/botStrategy.ts`; `"rambler"` (today's roamer, moved there
+> verbatim) and `"surveyor"` (`surveyorStrategy.ts`, the gradual-looping farmer) are
+> both registered. Red and Green run `"surveyor"`; Yellow stays `"rambler"`. Still
+> outstanding: **Phase 4**, the Profiles panel showing the archetype name per card and
+> rendering only that archetype's `fields` (today it renders every
+> [`BOT_PROFILE_FIELDS`](#tuning-knobs) slider on every driven card, so the four
+> Surveyor knobs are not yet tunable live — they sit at their `DEFAULT_BOT_PROFILE`
+> values).
 
 ### Why one brain is no longer enough
 
@@ -307,85 +336,115 @@ show sliders they don't use.
 | **Weaknesses under the new rules** | No consolidation (never encloses a big pocket). No offence — walks past cuttable trails. No defence — trails an exposed wake through contested water. Never exploits its own bridges. Tends to *plateau* in cell count rather than push toward a board win. |
 | **Assignment** | **Yellow Bot only**, going forward. `botType: "rambler"`, and the default when `botType` is omitted, so every existing `PlayerConfig` and test keeps its current behaviour. |
 
-### Archetype: the Surveyor (the planned gradual-looping bot; Red & Green)
+### Archetype: the Surveyor (the gradual-looping bot; Red & Green)
 
 The "concentrate on building safe loops to gradually expand their territory" bot.
+Built in Phase 3: `src/features/landGrab/surveyorStrategy.ts`, covered by
+`src/test/landGrabSurveyorStrategy.test.ts`.
 
 | | |
 | --- | --- |
 | **Goal** | Grow **one contiguous blob** outward from home by repeatedly closing the *largest loop it can safely close right now*, keeping its wake short and close to owned land so it's rarely cuttable. |
 | **Core idea** | Distance is measured to the **nearest owned cell**, not to `home`. The bot hugs the frontier of its own territory one cell out, sweeps a strip, then folds it in. Bigger, chunkier captures than the Rambler; much less exposure. |
+| **Emergent play** | Slowly thickening blob spreading out from the start corner. First loops are tiny (the base is the only owned land), each one extends the frontier a little further out. |
 
-**Sketched decision procedure** — still greedy one-cell lookahead, plus a two-value
-objective in `botMemory`:
+**Decision procedure** (`surveyorDecide`) — still greedy one-cell lookahead, plus a
+two-value objective mutated in place on `botMemory`:
 
-1. **Objective:** `memory = { phase: "extend" | "return", hugSide: Direction }`.
-   `hugSide` is which way owned land lies relative to the current sweep, so the bot
-   knows which way to curl to enclose area rather than draw a tendril.
-2. **Exposure guard (hard):** score a move `offBoardPenalty`-low if the resulting head
-   would be more than `maxTrailExposure` cells from the nearest owned cell, or if it
-   steps adjacent to a rival head. (The Rambler ignores both.)
-3. **Frontier hug (soft):** `frontierHugBonus` when the move keeps the head exactly one
-   cell outside own territory — this makes the eventual loop enclose a thick strip.
-4. **Area bias (soft):** small bonus for turning toward `hugSide` on the outbound leg so
-   the enclosed region stays chunky, not a thin finger.
-5. **Close trigger:** switch to `"return"` when `trail.length >= targetTrailLength`
-   **or** a rival head comes within `rivalAvoidRadius`. In `"return"`, reuse the
-   Rambler's homesick beeline verbatim (shortest Manhattan path back onto own colour).
-6. **Deadlock fallback:** if `trail.length` exceeds a hard cap (say `2 * targetTrailLength`)
-   without closing — boxed in, frontier unreachable — drop to a plain homesick beeline
-   so the bot can never freeze. This is the Surveyor degrading to Rambler behaviour, not
-   a separate code path.
+1. **Objective:** `memory = { type: "surveyor", phase: "extend" | "return", hugSide: Direction | null }`.
+   Rebuilt by `createSurveyorMemory()` on spawn and every respawn. `hugSide` is the
+   direction owned land lies from the head (cheap 4-way `nearestOwnedDistance` probe),
+   recorded each extend tick so the sweep curls instead of drawing a tendril.
+2. **Phase arbitration (with hysteresis):** `trail.length === 0` forces `"extend"` (fresh
+   leg after a bank/respawn). From `"extend"`, flip to `"return"` when a rival head is
+   within `rivalAvoidRadius` **or** the wake is both `>= targetTrailLength` long and its
+   bounding box (`estimateEnclosedArea`) is `>= targetTrailLength` — the area gate keeps
+   it from folding in a thin degenerate finger. Once `"return"` it stays there until the
+   loop banks and `trail` empties.
+3. **Exposure guard (hard, extend only):** a move scores `offBoardPenalty`-low if the
+   resulting head would be more than `maxTrailExposure` cells from the nearest owned cell
+   (bounded BFS), or if it steps 4-adjacent to a living rival head. The Rambler ignores
+   both.
+4. **Frontier hug (soft):** `+frontierHugBonus` when the target cell is neutral and
+   touches own territory — the loop then encloses a thick strip. Plus `+neutralBonus` for
+   unclaimed water and a `CURL_BONUS` (`0.5`) nudge toward `hugSide`, a faint
+   `-ownedDist * homePull` pull back toward safe land, and `Math.random() * jitter` so
+   two Surveyors don't lock-step.
+5. **Return leg:** the Rambler's homesick beeline verbatim — score each move
+   `-Manhattan(next, home)`, with `closeLoopReward - distance` for stepping onto own
+   territory while a trail is out (that dive banks the loop).
+6. **Deadlock fallbacks (Surveyor degrading to Rambler recovery, not a separate path):**
+   if `trail.length >= 2 * targetTrailLength` the return leg is forced regardless of
+   phase; and if on an extend tick *every* candidate scores `<= earlyLoopPenalty` (frontier
+   unreachable — boxed in by own wake), it flips to `"return"` and re-scores rather than
+   wiggle in place.
 
-**New pure helpers needed** (each independently unit-testable, like the existing
+**Pure helpers** (exported from `surveyorStrategy.ts`, each unit-tested directly like the
 grid/split helpers):
 
-- `nearestOwnedDistance(grid, playerId, cell)` — BFS/Manhattan field to closest own
-  territory. Can be approximated per-tick from a cheap flood if a full field is too
-  much.
-- `isFrontierAdjacent(grid, playerId, cell)` — is `cell` neutral and 4-adjacent to own
-  territory?
-- `estimateEnclosedArea(...)` — a *rough* count for the close decision only. The real
-  fill is still `resolveCapture`; the bot just needs "is this loop worth closing".
+- `nearestOwnedDistance(grid, playerId, cell, maxRadius?)` — bounded 4-connected BFS step
+  distance to the closest cell `playerId` owns as territory; `Infinity` past the cap or
+  off-board.
+- `isFrontierAdjacent(grid, playerId, cell)` — is `cell` neutral **and** 4-adjacent to
+  own territory?
+- `estimateEnclosedArea(trail, head)` — bounding-box area of the wake plus head; a rough
+  "is this loop worth closing" signal only (the real fill is still `resolveCapture`).
+- `nearestRivalHeadDistance(state, player)` — Manhattan distance to the closest *other
+  living* player's head; `Infinity` if alone.
 
-**New knobs** (added to the flat `BotProfile`, shown only on Surveyor cards):
+**Knobs** — four fields added to the flat `BotProfile` (`SURVEYOR_EXTRA_FIELDS`), with
+`SURVEYOR_PROFILE_FIELDS` = those four plus every Rambler field except
+`homesickTrailLength`. Panel wiring to show only this subset on Surveyor cards is
+Phase 4; until then the four sit at their `DEFAULT_BOT_PROFILE` values:
 
-| Field | Rough default | Effect |
+| Field | Default | Effect |
 | --- | --- | --- |
 | `maxTrailExposure` | `4` | Hard cap on how far the head may get from owned land while extending. Lower → safer, slower growth. |
-| `targetTrailLength` | `14` | Wake length that triggers the return leg. Higher → bigger loops, more risk. |
+| `targetTrailLength` | `14` | Wake length (and min bounding-box area) that triggers the return leg. Higher → bigger loops, more risk. |
 | `frontierHugBonus` | `3` | Pull toward staying one cell outside own territory. |
-| `rivalAvoidRadius` | `3` | Bail to the return leg if a rival head gets this close. |
+| `rivalAvoidRadius` | `3` | Bail to the return leg if a rival head gets this close (Manhattan). |
 
-**Failure modes to watch:** oscillating between `extend`/`return` on the boundary
-(hysteresis: only flip `phase` when the trigger is clearly met); never closing because
-the area threshold can't be reached (the deadlock fallback in step 6); curling the wrong
-way and self-boxing (`hugSide` must be recomputed if the frontier direction changes).
+**Failure modes handled:** boundary `extend`/`return` oscillation (phase only flips on a
+clearly-met trigger and latches until the loop banks); never closing because the area
+threshold can't be reached (the two deadlock fallbacks in step 6); self-boxing from a bad
+curl (`CURL_BONUS` is a sub-`jitter` tie-breaker, and `hugSide` is recomputed every
+extend tick).
 
-**Assignment:** **Red Bot** and **Green Bot** → `botType: "surveyor"`. Yellow stays
-Rambler, so a default match is "one roamer vs. two farmers vs. the human".
+**Assignment:** **Red Bot** and **Green Bot** → `botType: "surveyor"` in
+`PLAYER_CONFIGS`. Yellow is explicitly `botType: "rambler"`, so a default match is "one
+roamer vs. two farmers vs. the human".
 
 ### Rollout plan
 
-1. **This doc** — agree the archetype list and the `BotStrategy` interface.
-2. **Registry refactor, behaviour-neutral.** Add `BotType`, `BOT_STRATEGIES`, the
-   `botMemory` bag, and the `decideBotFacing` dispatcher; register only `rambler`, whose
-   `decide` is the current function moved verbatim. All existing unit + e2e tests stay
-   green with no edits. Add `botType?: BotType` to `PlayerConfig` (optional, defaults
-   `"rambler"`).
-3. **Implement `surveyor`.** New strategy module + the three pure helpers with their own
-   test file; extend `BotProfile` with the four knobs; wire `PLAYER_CONFIGS` so Red and
-   Green get `botType: "surveyor"`; tune defaults live in the panel. Update
-   [The three bots](#the-three-bots) and the [Behavioural phases](#behavioural-phases) /
-   [Tuning knobs](#tuning-knobs) tables here.
+1. **This doc** — agree the archetype list and the `BotStrategy` interface. ✅
+2. **Registry refactor, behaviour-neutral.** ✅ Landed. New `botStrategy.ts` holds
+   `BotType`, `BotMemory`, the `BotStrategy` interface, `BOT_STRATEGIES` (only `rambler`,
+   whose `decide` is the old `decideBotFacing` moved verbatim), `createBotMemory` and
+   `strategyFor`. The direction tables (`DELTA` / `OPPOSITE` / `ALL_DIRECTIONS`) moved to
+   a dep-free `geometry.ts` so `botStrategy.ts` needs only *type* imports from
+   `simulation.ts` — no runtime cycle. `simulation.ts`: `decideBotFacing` is now a
+   one-line dispatch to `strategyFor(player.botType).decide(...)`; `PlayerConfig` gained
+   optional `botType?: BotType`; `PlayerState` gained `botType` + `botMemory`, seeded in
+   `createInitialGameState` and rebuilt in `respawnPlayer`. All prior unit + e2e tests
+   pass unedited; `src/test/landGrabBotStrategy.test.ts` covers the new wiring.
+3. **Implement `surveyor`.** ✅ Landed. New `surveyorStrategy.ts` (the `BotStrategy` plus
+   `SurveyorMemory`, `createSurveyorMemory`, and the four exported pure helpers);
+   `botStrategy.ts` widened `BotType`/`BotMemory` and registered `surveyor`;
+   `createBotMemory` became a `switch`. `BotProfile` gained the four knobs (union default
+   in `DEFAULT_BOT_PROFILE`), with `SURVEYOR_EXTRA_FIELDS` / `SURVEYOR_PROFILE_FIELDS` in
+   `botProfile.ts`. `PLAYER_CONFIGS`: Red and Green `botType: "surveyor"`, Yellow explicit
+   `"rambler"`. `src/test/landGrabSurveyorStrategy.test.ts` covers the helpers and the
+   wiring; all prior unit + e2e tests pass unedited. `BotProfilePanel` still renders every
+   `BOT_PROFILE_FIELDS` slider on every driven card — narrowing it to
+   `strategyFor(botType).fields` is Phase 4.
 4. **Panel support.** Profiles panel shows the archetype name per card and renders only
-   that archetype's `fields`. Optional: a per-bot archetype dropdown so a match can be
-   set to 3× Surveyor, etc.
+   that archetype's `fields` (`SURVEYOR_PROFILE_FIELDS` for a Surveyor). Optional: a
+   per-bot archetype dropdown so a match can be set to 3× Surveyor, etc.
 5. **Later archetypes** (below), once the registry has proven out.
 
 **Game records:** `LandGrabPlayerRecord` could gain `botType` (schema bump to `2`, old
-rows still load and just lack the field). Defer until step 3 actually ships something
-worth recording.
+rows still load and just lack the field). Still deferred — the current records viewer is
+display-only and doesn't surface archetype.
 
 ### Later archetypes (sketch)
 
@@ -422,18 +481,33 @@ sits at the top of the panel.
 
 ## Tuning knobs
 
-Per-player, on `PlayerState.profile` (`src/features/landGrab/botProfile.ts`,
-`BOT_PROFILE_FIELDS` drives the sliders):
+Per-player, on `PlayerState.profile` (`src/features/landGrab/botProfile.ts`). Both
+archetypes share one flat `BotProfile`; each `BotStrategy.fields` lists the subset its
+scorer reads (`BOT_PROFILE_FIELDS` for the Rambler, `SURVEYOR_PROFILE_FIELDS` for the
+Surveyor). The panel renders `BOT_PROFILE_FIELDS` on every driven card today; Phase 4
+switches it to the per-archetype subset.
+
+**Rambler fields** (also read by the Surveyor except `homesickTrailLength`):
 
 | `BotProfile` field | Default | Effect |
 | --- | --- | --- |
-| `homesickTrailLength` | `9` | Trail length at which the bot flips from explore to beeline-home. Higher → bigger, riskier loops. |
-| `neutralBonus` | `2` | Preference for unclaimed water over owned cells while exploring. Must stay above `jitter` or neutral-seeking stops being reliable. |
-| `jitter` | `0.5` | Upper bound of the random wander added to each explore-mode score. `0` → all bots trace near-identical paths from symmetric corners. |
-| `homePull` | `0.01` | Weight of the pull back toward home while exploring (× Manhattan distance). Raise it to keep the bot hugging its corner. |
-| `closeLoopReward` | `1` | Bonus for diving back onto your own **territory** once homesick — the move that closes the loop and banks the capture. |
-| `earlyLoopPenalty` | `-20` | Penalty for steering back across your own wake while exploring. More negative → the trail stays untangled. |
-| `offBoardPenalty` | `-1000` | Penalty for steering into the (non-lethal) board edge. Only needs to rank below any real move. |
+| `homesickTrailLength` | `9` | Rambler only. Trail length at which it flips from explore to beeline-home. Higher → bigger, riskier loops. |
+| `neutralBonus` | `2` | Preference for unclaimed water over owned cells while exploring/extending. Must stay above `jitter` or neutral-seeking stops being reliable. |
+| `jitter` | `0.5` | Upper bound of the random wander added to each explore/extend-mode score. `0` → bots trace near-identical paths from symmetric corners. |
+| `homePull` | `0.01` | Weight of the pull back toward home/owned land while exploring/extending (× distance). Raise it to keep the bot hugging its corner. |
+| `closeLoopReward` | `1` | Bonus for diving back onto your own **territory** once homesick/returning — the move that closes the loop and banks the capture. |
+| `earlyLoopPenalty` | `-20` | Penalty for steering back across your own wake while exploring/extending. More negative → the trail stays untangled. |
+| `offBoardPenalty` | `-1000` | Penalty for steering into the (non-lethal) board edge; the Surveyor also reuses it for its hard exposure/rival guards. Only needs to rank below any real move. |
+
+**Surveyor-only fields** (`SURVEYOR_EXTRA_FIELDS`; not yet on a panel slider — sit at the
+defaults below):
+
+| `BotProfile` field | Default | Effect |
+| --- | --- | --- |
+| `maxTrailExposure` | `4` | Hard cap on how far the head may get from owned land while extending. Lower → safer, slower growth. |
+| `targetTrailLength` | `14` | Wake length (and min bounding-box area) that triggers the fold-back / return leg. Higher → bigger loops, more exposure. |
+| `frontierHugBonus` | `3` | Pull toward keeping the head one cell outside own territory, so the closed loop encloses a thick strip. |
+| `rivalAvoidRadius` | `3` | Bail straight to the return leg once a rival head gets this close (Manhattan). |
 
 Match- and presentation-level:
 

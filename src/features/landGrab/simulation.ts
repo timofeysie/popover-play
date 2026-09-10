@@ -1,6 +1,8 @@
 import { countOwnedCells, createEmptyGrid, findOpenSpawn, isAreaFree, placeBase, resolveCapture, type CellState } from "./grid";
 import { resolveTerritorySplit } from "./splitResolution";
 import { cloneProfile, DEFAULT_BOT_PROFILE, type BotProfile } from "./botProfile";
+import { DELTA, OPPOSITE } from "./geometry";
+import { createBotMemory, DEFAULT_BOT_TYPE, strategyFor, type BotMemory, type BotType } from "./botStrategy";
 import type { Direction, Vec2 } from "./types";
 
 export const BASE_RADIUS = 1;
@@ -25,6 +27,8 @@ export interface PlayerConfig {
   isBot: boolean;
   /** Starting decision parameters; defaults to `DEFAULT_BOT_PROFILE` when omitted. */
   profile?: BotProfile;
+  /** Which bot archetype picks this player's moves. Defaults to `"rambler"` (today's roamer) — see `botStrategy.ts`. */
+  botType?: BotType;
   /** Drive a non-bot player with `decideBotFacing` from tick 1. */
   autopilot?: boolean;
 }
@@ -44,6 +48,10 @@ export interface PlayerState extends PlayerConfig {
   hasStarted: boolean;
   /** The decision parameters this player's moves are scored against (used when a bot or on autopilot). */
   profile: BotProfile;
+  /** The archetype whose `decide` picks this player's moves when driven. Defaults to `"rambler"`. */
+  botType: BotType;
+  /** Per-archetype scratch space, rebuilt on spawn and every respawn. `stepGame` shares the ref across ticks. */
+  botMemory: BotMemory;
   /** True for bots, or a human whose autopilot toggle is on. */
   autopilot: boolean;
 }
@@ -64,17 +72,6 @@ export interface GameState {
    */
   winnerId: string | null;
 }
-
-const DELTA: Record<Direction, Vec2> = {
-  up: { row: -1, col: 0 },
-  down: { row: 1, col: 0 },
-  left: { row: 0, col: -1 },
-  right: { row: 0, col: 1 },
-};
-
-const OPPOSITE: Record<Direction, Direction> = { up: "down", down: "up", left: "right", right: "left" };
-
-const ALL_DIRECTIONS: Direction[] = ["up", "down", "left", "right"];
 
 /** Evenly spread starting corners for up to 4 players; anything past that falls back to a scanned spawn. */
 function startingSpots(rowCount: number, colCount: number, count: number): Vec2[] {
@@ -104,9 +101,12 @@ export function createInitialGameState(
     const home = spots[index] ?? findOpenSpawn(grid, { row: Math.floor(rowCount / 2), col: Math.floor(colCount / 2) });
     grid = placeBase(grid, home, config.id, BASE_RADIUS);
     const autopilot = config.autopilot ?? false;
+    const botType = config.botType ?? DEFAULT_BOT_TYPE;
     players[config.id] = {
       ...config,
       profile: cloneProfile(config.profile ?? DEFAULT_BOT_PROFILE),
+      botType,
+      botMemory: createBotMemory(botType),
       autopilot,
       alive: true,
       home,
@@ -183,6 +183,7 @@ function respawnPlayer(grid: CellState[][], player: PlayerState, spawn: Vec2): C
   player.alive = true;
   player.respawnAt = null;
   player.hasStarted = player.isBot || player.autopilot;
+  player.botMemory = createBotMemory(player.botType);
   return next;
 }
 
@@ -217,44 +218,13 @@ function findWinner(state: GameState, players: Record<string, PlayerState>, grid
   return null;
 }
 
+/**
+ * Pick a facing for a bot-driven player by handing off to its archetype's
+ * scorer. The archetypes live in `botStrategy.ts`; today only `"rambler"` (the
+ * original greedy roamer) is registered. See `docs/land-grab/bots.md`.
+ */
 function decideBotFacing(state: GameState, player: PlayerState): Direction {
-  const p = player.profile;
-  const candidates = ALL_DIRECTIONS.filter((d) => d !== OPPOSITE[player.facing] || player.trail.length === 0);
-  const homesick = player.trail.length >= p.homesickTrailLength;
-
-  function score(dir: Direction): number {
-    const next = { row: player.head.row + DELTA[dir].row, col: player.head.col + DELTA[dir].col };
-    // Board edge is just a wall now (the mover holds position), so it's merely
-    // wasteful, not fatal — rank it well below any real move but above suicide.
-    if (!inBounds(state, next)) return p.offBoardPenalty;
-    const cell = state.grid[next.row][next.col];
-    const distanceToHome = Math.abs(next.row - player.home.row) + Math.abs(next.col - player.home.col);
-    // Crossing our own wake no longer banks anything — the loop only closes back
-    // on our own territory. Homesick, treat the wake as clear path home; while
-    // exploring, still steer clear so the trail doesn't tangle into itself.
-    if (cell.kind === "trail" && cell.playerId === player.id) {
-      return homesick ? -distanceToHome : p.earlyLoopPenalty;
-    }
-    if (homesick) {
-      // Diving back onto our own colour with a trail out is the capture — pull
-      // hard toward it once we're close.
-      const banking = cell.kind === "territory" && cell.playerId === player.id && player.trail.length > 0;
-      return banking ? p.closeLoopReward - distanceToHome : -distanceToHome;
-    }
-    const preferUnclaimed = cell.kind === "neutral" ? p.neutralBonus : 0;
-    return preferUnclaimed - distanceToHome * p.homePull + Math.random() * p.jitter;
-  }
-
-  let best: Direction = candidates[0] ?? player.facing;
-  let bestScore = -Infinity;
-  for (const dir of candidates) {
-    const s = score(dir);
-    if (s > bestScore) {
-      bestScore = s;
-      best = dir;
-    }
-  }
-  return best;
+  return strategyFor(player.botType).decide(state, player, player.botMemory);
 }
 
 export function stepGame(state: GameState): GameState {

@@ -189,7 +189,11 @@ Swapping in a real API later is just replacing `saveGameRecord` / `loadGameRecor
 ### Bots
 
 Each tick, every living bot scores its candidate directions (all four except a straight
-reversal) and takes the best:
+reversal) and takes the best. There are two **archetypes**, dispatched by
+`strategyFor(player.botType)` (`src/features/landGrab/botStrategy.ts`): the **Rambler**
+(Yellow Bot, and the default) described below, and the **Surveyor** (Red & Green Bots),
+a deliberate territory farmer that hugs the frontier of its own land and folds in short,
+chunky loops. The Rambler's scorer:
 
 - **Off the board** → heavily penalised (it would only waste a tick holding still).
 - **Onto its own trail** → just clear path once homesick; avoided while exploring so the
@@ -200,14 +204,15 @@ reversal) and takes the best:
 - Otherwise it prefers unclaimed neutral cells, with a slight pull back toward home and a
   little random jitter so the three bots don't move in lockstep.
 
-Net behaviour: a bot sails out into open water, then after roughly nine cells of wake
-heads back to close its loop and bank a modest capture.
+Net behaviour: a Rambler sails out into open water, then after roughly nine cells of wake
+heads back to close its loop and bank a modest capture; a Surveyor grows one slowly
+thickening blob out from its corner.
 
-Each of the four scoring numbers is a field of a per-player **`BotProfile`**
+Each scoring number is a field of a per-player **`BotProfile`**
 (`src/features/landGrab/botProfile.ts`); all players start on `DEFAULT_BOT_PROFILE` and
 the demo's Profiles panel edits each independently and live. See
-[`docs/land-grab/bots.md`](land-grab/bots.md) for the full breakdown, including why a
-stationary player at one corner biases the standings.
+[`docs/land-grab/bots.md`](land-grab/bots.md) for the full breakdown of both archetypes,
+including why a stationary player at one corner biases the standings.
 
 ### Demo controls & display
 

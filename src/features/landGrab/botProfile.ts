@@ -22,6 +22,15 @@ export interface BotProfile {
   homePull: number;
   /** Upper bound of the random jitter (0..jitter) added to every explore-mode score. */
   jitter: number;
+  // --- Surveyor archetype (see `surveyorStrategy.ts` / `docs/land-grab/bots.md`) ---
+  /** Surveyor: hard cap on how far the head may get from owned land while extending. */
+  maxTrailExposure: number;
+  /** Surveyor: wake length that triggers the fold-back / return leg. */
+  targetTrailLength: number;
+  /** Surveyor: pull toward keeping the head exactly one cell outside own territory. */
+  frontierHugBonus: number;
+  /** Surveyor: bail to the return leg once a rival head gets this close (Manhattan). */
+  rivalAvoidRadius: number;
 }
 
 export const DEFAULT_BOT_PROFILE: BotProfile = {
@@ -32,6 +41,10 @@ export const DEFAULT_BOT_PROFILE: BotProfile = {
   neutralBonus: 2,
   homePull: 0.01,
   jitter: 0.5,
+  maxTrailExposure: 4,
+  targetTrailLength: 14,
+  frontierHugBonus: 3,
+  rivalAvoidRadius: 3,
 };
 
 export function cloneProfile(profile: BotProfile): BotProfile {
@@ -106,4 +119,50 @@ export const BOT_PROFILE_FIELDS: BotProfileField[] = [
     step: 10,
     hint: "Penalty for steering into the board edge. The edge is a non-lethal wall, so this only needs to rank below any real move.",
   },
+];
+
+/** The four Surveyor-only knobs, defined for the panel (Phase 4 wires them onto the Surveyor cards). */
+export const SURVEYOR_EXTRA_FIELDS: BotProfileField[] = [
+  {
+    key: "maxTrailExposure",
+    label: "Max trail exposure",
+    min: 1,
+    max: 20,
+    step: 1,
+    hint: "Hard cap on how far the head may drift from owned land while extending. Lower → safer, slower growth.",
+  },
+  {
+    key: "targetTrailLength",
+    label: "Target trail length",
+    min: 4,
+    max: 40,
+    step: 1,
+    hint: "Wake length that triggers the fold-back. Higher → bigger loops, more exposure.",
+  },
+  {
+    key: "frontierHugBonus",
+    label: "Frontier-hug bonus",
+    min: 0,
+    max: 10,
+    step: 0.5,
+    hint: "Pull toward keeping the head one cell outside your own territory, so the closed loop encloses a thick strip.",
+  },
+  {
+    key: "rivalAvoidRadius",
+    label: "Rival-avoid radius",
+    min: 0,
+    max: 12,
+    step: 1,
+    hint: "Bail straight to the return leg once a rival head gets this close (Manhattan distance).",
+  },
+];
+
+/**
+ * Fields the Surveyor archetype actually reads: the four knobs above plus every
+ * Rambler field except `homesickTrailLength` (the Surveyor uses `targetTrailLength`
+ * instead). Order here is the panel display order.
+ */
+export const SURVEYOR_PROFILE_FIELDS: BotProfileField[] = [
+  ...SURVEYOR_EXTRA_FIELDS,
+  ...BOT_PROFILE_FIELDS.filter((f) => f.key !== "homesickTrailLength"),
 ];
