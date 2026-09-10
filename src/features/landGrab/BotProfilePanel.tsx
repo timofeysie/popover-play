@@ -1,5 +1,6 @@
 import { BOT_PROFILE_FIELDS, type BotProfile } from "./botProfile";
 import type { GameRules, PlayerConfig } from "./simulation";
+import { MAX_USERNAME_LENGTH, resolveUsername } from "./userProfile";
 
 function colorToHex(color: number): string {
   return `#${color.toString(16).padStart(6, "0")}`;
@@ -19,9 +20,12 @@ const HUMAN_RULES = [
 export interface BotProfilePanelProps {
   configs: PlayerConfig[];
   humanId: string;
+  /** The human player's chosen name (raw, as typed). */
+  username: string;
   profiles: Record<string, BotProfile>;
   autopilot: Record<string, boolean>;
   rules: GameRules;
+  onUsernameChange: (value: string) => void;
   onProfileChange: (id: string, key: keyof BotProfile, value: number) => void;
   onAutopilotChange: (id: string, on: boolean) => void;
   onResetProfile: (id: string) => void;
@@ -32,9 +36,11 @@ export interface BotProfilePanelProps {
 export function BotProfilePanel({
   configs,
   humanId,
+  username,
   profiles,
   autopilot,
   rules,
+  onUsernameChange,
   onProfileChange,
   onAutopilotChange,
   onResetProfile,
@@ -83,7 +89,9 @@ export function BotProfilePanel({
                   className="w-3 h-3 rounded-full inline-block shrink-0"
                   style={{ backgroundColor: colorToHex(config.color) }}
                 />
-                <span className="text-sm font-medium text-foreground">{config.label}</span>
+                <span className="text-sm font-medium text-foreground">
+                  {isHuman ? resolveUsername(username) : config.label}
+                </span>
                 <span className="text-[10px] uppercase tracking-wide text-muted-foreground border border-border rounded px-1 py-px">
                   {isHuman ? "you" : "bot"}
                 </span>
@@ -96,6 +104,23 @@ export function BotProfilePanel({
                   </button>
                 )}
               </div>
+
+              {isHuman && (
+                <label className="flex flex-col gap-1 text-xs text-foreground mb-2">
+                  <span className="font-medium">Your name</span>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => onUsernameChange(e.target.value)}
+                    maxLength={MAX_USERNAME_LENGTH}
+                    placeholder="You"
+                    className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground"
+                  />
+                  <span className="text-[11px] text-muted-foreground">
+                    Shown on the leaderboard and saved to this browser.
+                  </span>
+                </label>
+              )}
 
               {isHuman && (
                 <label className="flex items-center gap-2 text-xs text-foreground mb-2">

@@ -13,6 +13,15 @@ export {
 } from "./gameRecord";
 export type { LandGrabGameRecord, LandGrabPlayerRecord } from "./gameRecord";
 export { MatchRecordsPanel } from "./MatchRecordsPanel";
+export {
+  loadUserProfile,
+  saveUserProfile,
+  resolveUsername,
+  DEFAULT_USERNAME,
+  MAX_USERNAME_LENGTH,
+  USER_PROFILE_STORAGE_KEY,
+} from "./userProfile";
+export type { LandGrabUserProfile } from "./userProfile";
 export { resolveCapture, createEmptyGrid, countOwnedCells } from "./grid";
 export type { CellState } from "./grid";
 export { resolveTerritorySplit } from "./splitResolution";

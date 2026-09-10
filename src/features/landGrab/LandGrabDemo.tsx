@@ -15,6 +15,7 @@ import { cloneProfile, DEFAULT_BOT_PROFILE, type BotProfile } from "./botProfile
 import { BotProfilePanel } from "./BotProfilePanel";
 import { MatchRecordsPanel } from "./MatchRecordsPanel";
 import { buildGameRecord, saveGameRecord, type LandGrabGameRecord } from "./gameRecord";
+import { loadUserProfile, resolveUsername, saveUserProfile } from "./userProfile";
 import type { Direction } from "./types";
 import {
   AlertDialog,
@@ -236,15 +237,22 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   const [profiles, setProfiles] = useState<Record<string, BotProfile>>(makeInitialProfiles);
   const [autopilot, setAutopilot] = useState<Record<string, boolean>>(makeInitialAutopilot);
   const [rules, setRules] = useState<GameRules>({ ...DEFAULT_GAME_RULES });
+  const [username, setUsername] = useState<string>(() => loadUserProfile().username);
 
   const controlRef = useRef<SceneControl>({ paused: false, speed: 1, stepOnce: false });
   const profilesRef = useRef(profiles);
   const autopilotRef = useRef(autopilot);
   const rulesRef = useRef(rules);
+  const usernameRef = useRef(username);
+
+  /** The human's display name, trimmed and never empty. Bots keep their fixed labels. */
+  const displayLabel = (player: Pick<PlayerState, "id" | "label">): string =>
+    player.id === HUMAN_ID ? resolveUsername(username) : player.label;
 
   const buildConfigs = (): PlayerConfig[] =>
     PLAYER_CONFIGS.map((c) => ({
       ...c,
+      label: c.id === HUMAN_ID ? resolveUsername(usernameRef.current) : c.label,
       profile: cloneProfile(profilesRef.current[c.id] ?? DEFAULT_BOT_PROFILE),
       autopilot: !!autopilotRef.current[c.id],
     }));
@@ -281,6 +289,10 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   useEffect(() => {
     rulesRef.current = rules;
   }, [rules]);
+  useEffect(() => {
+    usernameRef.current = username;
+    saveUserProfile({ schemaVersion: 1, username });
+  }, [username]);
 
   // Space toggles pause, "." single-steps. Ignore while a control has focus so
   // the panel's sliders/buttons keep their own key handling.
@@ -448,7 +460,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
                 {leaderboard.map((player) => (
                   <li key={player.id} className="flex items-center gap-2">
                     <span className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: colorToHex(player.color) }} />
-                    <span className="text-foreground font-medium">{player.label}</span>
+                    <span className="text-foreground font-medium">{displayLabel(player)}</span>
                     <span className="text-muted-foreground">{player.ownedCount} cells</span>
                     {!player.alive && <span className="text-destructive text-xs">trying to respawn…</span>}
                   </li>
@@ -473,14 +485,14 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
                 <li key={player.id} className="flex items-center gap-2">
                   <span className="text-muted-foreground tabular-nums w-4">{index + 1}</span>
                   <span className="w-3 h-3 rounded-full inline-block shrink-0" style={{ backgroundColor: colorToHex(player.color) }} />
-                  <span className="text-foreground font-medium truncate">{player.label}</span>
+                  <span className="text-foreground font-medium truncate">{displayLabel(player)}</span>
                   <span className="text-muted-foreground tabular-nums ml-auto">{player.ownedCount}</span>
                 </li>
               ))}
             </ol>
             <ul className="mt-3 flex flex-col gap-1">
               {leaderboard.filter((p) => !p.alive).map((player) => (
-                <li key={player.id} className="text-destructive text-xs">{player.label} trying to respawn…</li>
+                <li key={player.id} className="text-destructive text-xs">{displayLabel(player)} trying to respawn…</li>
               ))}
             </ul>
             <button
@@ -504,9 +516,11 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
         <BotProfilePanel
           configs={PLAYER_CONFIGS}
           humanId={HUMAN_ID}
+          username={username}
           profiles={profiles}
           autopilot={autopilot}
           rules={rules}
+          onUsernameChange={setUsername}
           onProfileChange={handleProfileChange}
           onAutopilotChange={(id, on) => setAutopilot((prev) => ({ ...prev, [id]: on }))}
           onResetProfile={handleResetProfile}
