@@ -12,6 +12,13 @@ describe("createInitialGameState", () => {
     expect(state.players.p1.home).toEqual({ row: 2, col: 2 });
     expect(state.players.p1.alive).toBe(true);
   });
+
+  it("seeds the high-water mark and per-player counters", () => {
+    const state = createInitialGameState(7, 7, [HUMAN]);
+    expect(state.players.p1.peakOwnedCount).toBe(9); // == the opening base
+    expect(state.players.p1.captures).toBe(0);
+    expect(state.players.p1.timesCaptured).toBe(0);
+  });
 });
 
 describe("stepGame — a full capture loop", () => {
@@ -31,6 +38,7 @@ describe("stepGame — a full capture loop", () => {
     expect(player.trail).toEqual([]); // loop closed, trail consumed
     expect(player.head).toEqual({ row: 3, col: 3 });
     expect(player.ownedCount).toBe(19); // 9 base + 8 trail cells + 2 enclosed cells
+    expect(player.peakOwnedCount).toBe(19); // grew monotonically, so peak tracks the current count
     expect(state.grid[1][4]).toEqual({ kind: "territory", playerId: "p1" });
     expect(state.grid[2][4]).toEqual({ kind: "territory", playerId: "p1" });
   });
@@ -181,6 +189,9 @@ describe("stepGame — cutting a trail captures both wakes and bridges the land"
     expect(p2.alive).toBe(false);
     expect(p2.respawnAt).not.toBeNull();
     expect(p2.ownedCount).toBe(0);
+    expect(p1.captures).toBe(1); // p1 cut the trail…
+    expect(p2.timesCaptured).toBe(1); // …and p2 wears the loss
+    expect(p1.timesCaptured).toBe(0);
     expect(p1.trail).toEqual([]);
     expect(p1.head).toEqual({ row: 1, col: 5 });
 

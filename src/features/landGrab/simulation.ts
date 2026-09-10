@@ -41,9 +41,13 @@ export interface PlayerState extends PlayerConfig {
   queuedFacing: Direction | null;
   trail: Vec2[];
   ownedCount: number;
+  /** The largest `ownedCount` this player has held at the end of any tick so far — their high-water mark. */
+  peakOwnedCount: number;
   respawnAt: number | null;
   /** How many times this player has cut a rival's trail and seized their land. */
   captures: number;
+  /** How many times a rival has cut this player's trail and sunk them. The mirror of `captures`, win or lose. */
+  timesCaptured: number;
   /** Bots move every tick from the start; a human sits still at home until their first key press. */
   hasStarted: boolean;
   /** The decision parameters this player's moves are scored against (used when a bot or on autopilot). */
@@ -115,14 +119,17 @@ export function createInitialGameState(
       queuedFacing: null,
       trail: [],
       ownedCount: 0,
+      peakOwnedCount: 0,
       respawnAt: null,
       captures: 0,
+      timesCaptured: 0,
       hasStarted: config.isBot || autopilot,
     };
   });
 
   for (const player of Object.values(players)) {
     player.ownedCount = countOwnedCells(grid, player.id);
+    player.peakOwnedCount = player.ownedCount;
   }
 
   return {
@@ -314,6 +321,7 @@ export function stepGame(state: GameState): GameState {
       victim.trail = [];
       victim.queuedFacing = null;
       victim.respawnAt = nextTick + rules.respawnDelayTicks;
+      victim.timesCaptured += 1;
 
       player.captures += 1;
       player.trail = [];
@@ -356,6 +364,7 @@ export function stepGame(state: GameState): GameState {
 
   for (const player of Object.values(players)) {
     player.ownedCount = countOwnedCells(grid, player.id);
+    if (player.ownedCount > player.peakOwnedCount) player.peakOwnedCount = player.ownedCount;
   }
 
   // Someone whose entire territory was just swallowed by another player's

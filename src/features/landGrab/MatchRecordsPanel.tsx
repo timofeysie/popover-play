@@ -38,8 +38,11 @@ function Standing({ player, isWinner }: { player: LandGrabPlayerRecord; isWinner
         {player.label}
       </span>
       <span className="tabular-nums text-muted-foreground">
-        {player.ownedCount} ({Math.round(player.ownedFraction * 100)}%)
+        {player.peakOwnedCount} ({Math.round(player.peakOwnedFraction * 100)}%) peak
       </span>
+      {player.timesCaptured > 0 && (
+        <span className="tabular-nums text-destructive">· sunk {player.timesCaptured}×</span>
+      )}
     </span>
   );
 }
@@ -92,12 +95,12 @@ export function MatchRecordsPanel() {
                 <th className="py-2 pr-4 font-medium text-right">Ticks</th>
                 <th className="py-2 pr-4 font-medium text-right">Time</th>
                 <th className="py-2 pr-4 font-medium text-right">Board</th>
-                <th className="py-2 font-medium">Standings</th>
+                <th className="py-2 font-medium">Standings (peak cells · times sunk)</th>
               </tr>
             </thead>
             <tbody>
               {records.map((record, index) => {
-                const standings = [...record.players].sort((a, b) => b.ownedCount - a.ownedCount);
+                const standings = [...record.players].sort((a, b) => b.peakOwnedCount - a.peakOwnedCount);
                 return (
                   <tr key={`${record.endedAt}-${index}`} className="border-t border-border align-top">
                     <td className="py-2 pr-4 whitespace-nowrap text-muted-foreground">

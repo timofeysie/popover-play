@@ -9,7 +9,7 @@ import type { BotProfile } from "./botProfile";
  */
 export interface LandGrabGameRecord {
   /** Bump if the shape below changes so old rows can be filtered out on read. */
-  schemaVersion: 1;
+  schemaVersion: 2;
   /** ISO-8601, when the match was recorded. */
   endedAt: string;
   winner: LandGrabPlayerRecord;
@@ -32,8 +32,14 @@ export interface LandGrabPlayerRecord {
   ownedCount: number;
   /** Share of the board this player held at the end, 0..1. */
   ownedFraction: number;
+  /** The most cells this player held at any point in the match — their high-water mark. */
+  peakOwnedCount: number;
+  /** `peakOwnedCount / totalCells`, 0..1. */
+  peakOwnedFraction: number;
   /** Rival trails this player cut (each seizing that player's land). */
   captures: number;
+  /** Times a rival cut this player's trail and sank them — counted win or lose. */
+  timesCaptured: number;
   alive: boolean;
   /** The decision parameters this player was running when the match ended. */
   profile: BotProfile;
@@ -58,7 +64,10 @@ function toPlayerRecord(
     autopilot: player.autopilot,
     ownedCount: player.ownedCount,
     ownedFraction: totalCells > 0 ? player.ownedCount / totalCells : 0,
+    peakOwnedCount: player.peakOwnedCount,
+    peakOwnedFraction: totalCells > 0 ? player.peakOwnedCount / totalCells : 0,
     captures: player.captures,
+    timesCaptured: player.timesCaptured,
     alive: player.alive,
     profile: { ...player.profile },
   };
@@ -79,7 +88,7 @@ export function buildGameRecord(state: GameState, endedAt: Date = new Date()): L
     .map((player) => toPlayerRecord(player, totalCells));
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     endedAt: endedAt.toISOString(),
     winner: toPlayerRecord(winner, totalCells),
     players,
@@ -97,7 +106,7 @@ export function loadGameRecords(): LandGrabGameRecord[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((row): row is LandGrabGameRecord => row?.schemaVersion === 1);
+    return parsed.filter((row): row is LandGrabGameRecord => row?.schemaVersion === 2);
   } catch {
     return [];
   }

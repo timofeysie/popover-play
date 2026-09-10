@@ -247,7 +247,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   const [fullScreen, setFullScreen] = useState(false);
 
   const [paused, setPaused] = useState(false);
-  const [speed, setSpeed] = useState(1);
+  const [speed, setSpeed] = useState(2);
   const [showProfiles, setShowProfiles] = useState(false);
   const [showRecords, setShowRecords] = useState(false);
   const [profiles, setProfiles] = useState<Record<string, BotProfile>>(makeInitialProfiles);
@@ -256,7 +256,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   const [rules, setRules] = useState<GameRules>({ ...DEFAULT_GAME_RULES });
   const [username, setUsername] = useState<string>(() => loadUserProfile().username);
 
-  const controlRef = useRef<SceneControl>({ paused: false, speed: 1, stepOnce: false });
+  const controlRef = useRef<SceneControl>({ paused: false, speed: 2, stepOnce: false });
   const profilesRef = useRef(profiles);
   const autopilotRef = useRef(autopilot);
   const botTypesRef = useRef(botTypes);
@@ -352,6 +352,17 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [fullScreen]);
+
+  // Windowed mode: auto-dismiss the result modal and start a fresh match after 5s.
+  // Full screen keeps the modal up so the final board stays on screen until dismissed.
+  useEffect(() => {
+    if (hideControls || fullScreen || gameOver === null) return;
+    const timer = window.setTimeout(() => {
+      setGameOver(null);
+      restart();
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [gameOver, fullScreen, hideControls]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -586,8 +597,14 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
                       <dd className="tabular-nums text-foreground">
                         {gameOver.winner.ownedCount} ({Math.round(gameOver.winner.ownedFraction * 100)}%)
                       </dd>
+                      <dt className="text-muted-foreground">Winner peak</dt>
+                      <dd className="tabular-nums text-foreground">
+                        {gameOver.winner.peakOwnedCount} ({Math.round(gameOver.winner.peakOwnedFraction * 100)}%)
+                      </dd>
                       <dt className="text-muted-foreground">Winner captures</dt>
                       <dd className="tabular-nums text-foreground">{gameOver.winner.captures}</dd>
+                      <dt className="text-muted-foreground">Winner sunk</dt>
+                      <dd className="tabular-nums text-foreground">{gameOver.winner.timesCaptured}×</dd>
                     </dl>
                   )}
                   <p className="text-xs text-muted-foreground">

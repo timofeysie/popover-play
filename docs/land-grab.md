@@ -177,7 +177,7 @@ It also writes a **game record** — there's no backend yet, so `saveGameRecord`
 
 ```jsonc
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "endedAt": "2026-09-10T12:00:00.000Z",
   "ticks": 437,
   "durationMs": 69920,                 // ticks * TICK_MS
@@ -186,7 +186,11 @@ It also writes a **game record** — there's no backend yet, so `saveGameRecord`
   "winner": {
     "id": "bot-red", "label": "Red Surveyor", "color": "#f87171",
     "isBot": true, "autopilot": false,
-    "ownedCount": 384, "ownedFraction": 1, "captures": 3, "alive": true,
+    "ownedCount": 384, "ownedFraction": 1,       // held at the final tick
+    "peakOwnedCount": 384, "peakOwnedFraction": 1, // high-water mark over the match
+    "captures": 3,        // rival trails this player cut
+    "timesCaptured": 1,   // times a rival cut this player's trail (win or lose)
+    "alive": true,
     "profile": { "homesickTrailLength": 9, "offBoardPenalty": -1000, /* …BotProfile */ }
   },
   "players": [ /* one record per player, in playerOrder, same shape as `winner` */ ]
@@ -194,6 +198,7 @@ It also writes a **game record** — there's no backend yet, so `saveGameRecord`
 ```
 
 Swapping in a real API later is just replacing `saveGameRecord` / `loadGameRecords`.
+Full field-by-field reference: [`docs/land-grab/records.md`](./land-grab/records.md).
 
 ### Bots
 

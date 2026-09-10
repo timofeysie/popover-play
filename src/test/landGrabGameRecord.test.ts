@@ -23,8 +23,22 @@ function decidedState(): GameState {
     tick: 437,
     winnerId: "bot-red",
     players: {
-      you: { ...base.players.you, ownedCount: 0, alive: false, captures: 1 },
-      "bot-red": { ...base.players["bot-red"], ownedCount: 120, alive: true, captures: 3 },
+      you: {
+        ...base.players.you,
+        ownedCount: 0,
+        peakOwnedCount: 42,
+        alive: false,
+        captures: 1,
+        timesCaptured: 4,
+      },
+      "bot-red": {
+        ...base.players["bot-red"],
+        ownedCount: 120,
+        peakOwnedCount: 120,
+        alive: true,
+        captures: 3,
+        timesCaptured: 2,
+      },
     },
   };
 }
@@ -33,7 +47,7 @@ describe("buildGameRecord", () => {
   it("captures the winner, board, and timing", () => {
     const record = buildGameRecord(decidedState(), new Date("2026-09-10T12:00:00.000Z"));
 
-    expect(record.schemaVersion).toBe(1);
+    expect(record.schemaVersion).toBe(2);
     expect(record.endedAt).toBe("2026-09-10T12:00:00.000Z");
     expect(record.ticks).toBe(437);
     expect(record.durationMs).toBe(437 * 160); // TICK_MS
@@ -45,8 +59,11 @@ describe("buildGameRecord", () => {
     expect(record.winner.color).toBe("#f87171");
     expect(record.winner.isBot).toBe(true);
     expect(record.winner.captures).toBe(3);
+    expect(record.winner.timesCaptured).toBe(2);
     expect(record.winner.ownedCount).toBe(120);
     expect(record.winner.ownedFraction).toBeCloseTo(1);
+    expect(record.winner.peakOwnedCount).toBe(120);
+    expect(record.winner.peakOwnedFraction).toBeCloseTo(1);
     expect(record.winner.profile).toEqual(DEFAULT_BOT_PROFILE);
   });
 
@@ -54,6 +71,15 @@ describe("buildGameRecord", () => {
     const record = buildGameRecord(decidedState());
     expect(record.players.map((p) => p.id)).toEqual(["you", "bot-red"]);
     expect(record.players.find((p) => p.id === "you")?.ownedFraction).toBe(0);
+  });
+
+  it("records each player's high-water mark and how often they were sunk", () => {
+    const record = buildGameRecord(decidedState());
+    const you = record.players.find((p) => p.id === "you");
+    expect(you?.ownedCount).toBe(0); // finished with nothing…
+    expect(you?.peakOwnedCount).toBe(42); // …but held 42 cells at their best
+    expect(you?.peakOwnedFraction).toBeCloseTo(42 / 120);
+    expect(you?.timesCaptured).toBe(4);
   });
 
   it("throws if the game is not decided", () => {
