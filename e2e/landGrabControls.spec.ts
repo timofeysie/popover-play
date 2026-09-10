@@ -29,8 +29,20 @@ test("land grab: pause, step, and the profiles panel", async ({ page }) => {
   await page.getByRole("button", { name: "Profiles" }).click();
   const panel = page.getByTestId("bot-profile-panel");
   await expect(panel.getByRole("heading", { name: "Profiles & tuning" })).toBeVisible();
-  await expect(panel.getByText("Red Bot")).toBeVisible();
-  await expect(panel.getByText("Homesick trail length").first()).toBeVisible();
+  await expect(panel.getByText("Red Surveyor")).toBeVisible();
+
+  // Red starts as a Surveyor: its card shows the archetype and the Surveyor-only
+  // knobs, not the Rambler's homesick length.
+  const redCard = page.getByTestId("bot-card-bot-red");
+  const redArchetype = redCard.getByLabel("Archetype");
+  await expect(redArchetype).toHaveValue("surveyor");
+  await expect(redCard.getByText("Max trail exposure")).toBeVisible();
+  await expect(redCard.getByText("Homesick trail length")).toHaveCount(0);
+
+  // Switching Red to Rambler swaps the rendered field set.
+  await redArchetype.selectOption("rambler");
+  await expect(redCard.getByText("Homesick trail length")).toBeVisible();
+  await expect(redCard.getByText("Max trail exposure")).toHaveCount(0);
 
   // Autopilot toggle exists on the You card.
   await expect(panel.getByRole("checkbox", { name: /Autopilot/ })).toBeVisible();

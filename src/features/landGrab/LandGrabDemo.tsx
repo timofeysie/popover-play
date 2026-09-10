@@ -12,6 +12,7 @@ import {
   type PlayerState,
 } from "./simulation";
 import { cloneProfile, DEFAULT_BOT_PROFILE, type BotProfile } from "./botProfile";
+import { createBotMemory, DEFAULT_BOT_TYPE, type BotType } from "./botStrategy";
 import { BotProfilePanel } from "./BotProfilePanel";
 import { MatchRecordsPanel } from "./MatchRecordsPanel";
 import { buildGameRecord, saveGameRecord, type LandGrabGameRecord } from "./gameRecord";
@@ -56,9 +57,9 @@ function computeFullScreenDims(): GridDims {
 
 const PLAYER_CONFIGS: PlayerConfig[] = [
   { id: "you", label: "You", color: 0x38bdf8, isBot: false },
-  { id: "bot-red", label: "Red Bot", color: 0xf87171, isBot: true, botType: "surveyor" },
-  { id: "bot-yellow", label: "Yellow Bot", color: 0xfacc15, isBot: true, botType: "rambler" },
-  { id: "bot-green", label: "Green Bot", color: 0x4ade80, isBot: true, botType: "surveyor" },
+  { id: "bot-red", label: "Red Surveyor", color: 0xf87171, isBot: true, botType: "surveyor" },
+  { id: "bot-yellow", label: "Yellow Rambler", color: 0xfacc15, isBot: true, botType: "rambler" },
+  { id: "bot-green", label: "Green Surveyor", color: 0x4ade80, isBot: true, botType: "surveyor" },
 ];
 
 const HUMAN_ID = "you";
@@ -69,6 +70,10 @@ function makeInitialProfiles(): Record<string, BotProfile> {
 
 function makeInitialAutopilot(): Record<string, boolean> {
   return Object.fromEntries(PLAYER_CONFIGS.map((c) => [c.id, false]));
+}
+
+function makeInitialBotTypes(): Record<string, BotType> {
+  return Object.fromEntries(PLAYER_CONFIGS.map((c) => [c.id, c.botType ?? DEFAULT_BOT_TYPE]));
 }
 
 const KEY_TO_DIRECTION: Record<string, Direction> = {
@@ -95,6 +100,7 @@ interface SceneData {
   controlRef: { current: SceneControl };
   profilesRef: { current: Record<string, BotProfile> };
   autopilotRef: { current: Record<string, boolean> };
+  botTypesRef: { current: Record<string, BotType> };
   rulesRef: { current: GameRules };
   onTick: (state: GameState) => void;
   cellSize: number;
@@ -105,6 +111,7 @@ class LandGrabScene extends Phaser.Scene {
   private controlRef!: SceneData["controlRef"];
   private profilesRef!: SceneData["profilesRef"];
   private autopilotRef!: SceneData["autopilotRef"];
+  private botTypesRef!: SceneData["botTypesRef"];
   private rulesRef!: SceneData["rulesRef"];
   private onTick!: SceneData["onTick"];
   private cellSize = CELL_SIZE;
@@ -120,6 +127,7 @@ class LandGrabScene extends Phaser.Scene {
     this.controlRef = data.controlRef;
     this.profilesRef = data.profilesRef;
     this.autopilotRef = data.autopilotRef;
+    this.botTypesRef = data.botTypesRef;
     this.rulesRef = data.rulesRef;
     this.onTick = data.onTick;
     this.cellSize = data.cellSize;
@@ -154,9 +162,17 @@ class LandGrabScene extends Phaser.Scene {
         // Push the React-owned knobs onto the live state before stepping.
         state.rules.respawnDelayTicks = this.rulesRef.current.respawnDelayTicks;
         for (const id of Object.keys(state.players)) {
+          const player = state.players[id];
           const profile = this.profilesRef.current[id];
-          if (profile) state.players[id].profile = profile;
-          state.players[id].autopilot = !!this.autopilotRef.current[id];
+          if (profile) player.profile = profile;
+          player.autopilot = !!this.autopilotRef.current[id];
+          // Live archetype swap from the Profiles panel — rebuild the scratch bag
+          // so the new strategy never reads the old one's memory shape.
+          const nextType = this.botTypesRef.current[id];
+          if (nextType && player.botType !== nextType) {
+            player.botType = nextType;
+            player.botMemory = createBotMemory(nextType);
+          }
         }
 
         this.gameStateRef.current = stepGame(state);
@@ -236,12 +252,14 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   const [showRecords, setShowRecords] = useState(false);
   const [profiles, setProfiles] = useState<Record<string, BotProfile>>(makeInitialProfiles);
   const [autopilot, setAutopilot] = useState<Record<string, boolean>>(makeInitialAutopilot);
+  const [botTypes, setBotTypes] = useState<Record<string, BotType>>(makeInitialBotTypes);
   const [rules, setRules] = useState<GameRules>({ ...DEFAULT_GAME_RULES });
   const [username, setUsername] = useState<string>(() => loadUserProfile().username);
 
   const controlRef = useRef<SceneControl>({ paused: false, speed: 1, stepOnce: false });
   const profilesRef = useRef(profiles);
   const autopilotRef = useRef(autopilot);
+  const botTypesRef = useRef(botTypes);
   const rulesRef = useRef(rules);
   const usernameRef = useRef(username);
 
@@ -255,6 +273,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
       label: c.id === HUMAN_ID ? resolveUsername(usernameRef.current) : c.label,
       profile: cloneProfile(profilesRef.current[c.id] ?? DEFAULT_BOT_PROFILE),
       autopilot: !!autopilotRef.current[c.id],
+      botType: botTypesRef.current[c.id] ?? c.botType,
     }));
 
   const stateHolderRef = useRef<{ current: GameState }>({
@@ -286,6 +305,9 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   useEffect(() => {
     autopilotRef.current = autopilot;
   }, [autopilot]);
+  useEffect(() => {
+    botTypesRef.current = botTypes;
+  }, [botTypes]);
   useEffect(() => {
     rulesRef.current = rules;
   }, [rules]);
@@ -359,6 +381,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
         controlRef,
         profilesRef,
         autopilotRef,
+        botTypesRef,
         rulesRef,
         cellSize: dims.cell,
         onTick: (state: GameState) => {
@@ -391,6 +414,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   };
   const handleResetAll = () => {
     setProfiles(makeInitialProfiles());
+    setBotTypes(makeInitialBotTypes());
     setRules({ ...DEFAULT_GAME_RULES });
   };
 
@@ -519,10 +543,12 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
           username={username}
           profiles={profiles}
           autopilot={autopilot}
+          botTypes={botTypes}
           rules={rules}
           onUsernameChange={setUsername}
           onProfileChange={handleProfileChange}
           onAutopilotChange={(id, on) => setAutopilot((prev) => ({ ...prev, [id]: on }))}
+          onBotTypeChange={(id, type) => setBotTypes((prev) => ({ ...prev, [id]: type }))}
           onResetProfile={handleResetProfile}
           onResetAll={handleResetAll}
           onRulesChange={(patch) => setRules((prev) => ({ ...prev, ...patch }))}

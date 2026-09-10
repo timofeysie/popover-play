@@ -27,8 +27,8 @@ export const DEFAULT_BOT_TYPE: BotType = "rambler";
  * reference across ticks, so a strategy that needs state should mutate this bag
  * in place rather than expect a fresh copy each tick.
  *
- * The rambler is stateless; the surveyor keeps its `phase` / `hugSide` objective
- * here (see `surveyorStrategy.ts`).
+ * The rambler is stateless; the surveyor keeps its `phase`, a short trail of
+ * recent head cells, and a stuck counter here (see `surveyorStrategy.ts`).
  */
 export type BotMemory = { type: "rambler" } | SurveyorMemory;
 

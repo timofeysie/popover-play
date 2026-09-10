@@ -46,7 +46,9 @@ the four orthogonal neighbors.
 5. Moving onto an **opponent's trail cell** **eliminates** you (see
    [Elimination rules](#elimination-rules)). Your own trail you pass straight through —
    see the [move-resolution table](#what-happens-when-you-move-onto-a-cell).
-6. Score = total owned cell count. The match ends when one player holds the whole board,
+6. Having your **entire territory** enclosed and flipped by an opponent's capture fill
+   also **eliminates** you — with no land left there's nothing to close a loop onto.
+7. Score = total owned cell count. The match ends when one player holds the whole board,
    or is the last one alive with nowhere left for the dead to respawn — see
    [Match end & game records](#match-end--game-records).
 
@@ -143,6 +145,13 @@ territory). **Cutting an opponent's trail runs this same fill** — see
   pocket of some *other* player's territory, so `resolveTerritorySplit` runs for every
   player except the capturing player and the victim, exactly as a normal capture does —
   any fragment orphaned from that player's piece reverts to neutral.
+- **Losing your last cell is death.** After every tick, any player who is still `alive`
+  but now owns **zero** territory — their whole blob was enclosed and flipped by someone
+  else's capture fill — is sunk on the spot: `alive` goes false, their wake is wiped from
+  the board (back to neutral), and a respawn is scheduled like any other elimination.
+  Without owned ground there's nothing to close a loop onto, so this stops a fully
+  surrounded boat from drifting on forever laying trail through enemy land. It is *not* a
+  trail cut, so it doesn't bump anyone's `captures`.
 - **Respawn needs a clear 3×3.** When the timer is up, the game looks for a fully-neutral
   3×3 pocket, scanning outward from your old home. If none exists yet you **stay dead**,
   and it re-checks every tick until one opens up (freed by a later capture, split, or
@@ -175,7 +184,7 @@ It also writes a **game record** — there's no backend yet, so `saveGameRecord`
   "board": { "rows": 16, "cols": 24, "totalCells": 384 },
   "rules": { "respawnDelayTicks": 12 },
   "winner": {
-    "id": "bot-red", "label": "Red Bot", "color": "#f87171",
+    "id": "bot-red", "label": "Red Surveyor", "color": "#f87171",
     "isBot": true, "autopilot": false,
     "ownedCount": 384, "ownedFraction": 1, "captures": 3, "alive": true,
     "profile": { "homesickTrailLength": 9, "offBoardPenalty": -1000, /* …BotProfile */ }
@@ -191,9 +200,10 @@ Swapping in a real API later is just replacing `saveGameRecord` / `loadGameRecor
 Each tick, every living bot scores its candidate directions (all four except a straight
 reversal) and takes the best. There are two **archetypes**, dispatched by
 `strategyFor(player.botType)` (`src/features/landGrab/botStrategy.ts`): the **Rambler**
-(Yellow Bot, and the default) described below, and the **Surveyor** (Red & Green Bots),
-a deliberate territory farmer that hugs the frontier of its own land and folds in short,
-chunky loops. The Rambler's scorer:
+(the Yellow boat, and the default) described below, and the **Surveyor** (the Red and
+Green boats), a goal-oriented farmer that fans short loops out from its frontier toward a
+rotating, centre-biased target so its blob grows evenly and two Surveyors meet in the
+middle. The Rambler's scorer:
 
 - **Off the board** → heavily penalised (it would only waste a tick holding still).
 - **Onto its own trail** → just clear path once homesick; avoided while exploring so the
@@ -205,8 +215,9 @@ chunky loops. The Rambler's scorer:
   little random jitter so the three bots don't move in lockstep.
 
 Net behaviour: a Rambler sails out into open water, then after roughly nine cells of wake
-heads back to close its loop and bank a modest capture; a Surveyor grows one slowly
-thickening blob out from its corner.
+heads back to close its loop and bank a modest capture; a Surveyor fans loops from its
+frontier toward the board centre, growing a chunky blob that eventually collides with a
+rival's so the match resolves.
 
 Each scoring number is a field of a per-player **`BotProfile`**
 (`src/features/landGrab/botProfile.ts`); all players start on `DEFAULT_BOT_PROFILE` and
@@ -221,10 +232,10 @@ including why a stationary player at one corner biases the standings.
 - **Pause** (or <kbd>Space</kbd>) freezes the tick loop; **Step** (or <kbd>.</kbd>)
   advances exactly one tick while paused; a **Speed** selector runs the loop at
   0.25×–4×. None of these change the simulation, only how often it steps.
-- **Profiles** opens a panel with a card per player: live sliders for every bot's
-  `BotProfile` fields plus the match-level respawn delay, per-card and global **Reset**,
-  and an **Autopilot** toggle on *You* that hands your boat to the same `decideBotFacing`
-  scorer with its own editable profile.
+- **Profiles** opens a panel with a card per player: a per-card **Archetype** dropdown
+  (Rambler / Surveyor, hot-swappable mid-match), live sliders for the `BotProfile` fields
+  that archetype reads, the match-level respawn delay, per-card and global **Reset**, and
+  an **Autopilot** toggle on *You* that hands your boat to the chosen archetype's scorer.
 - **Full screen** (in the leaderboard panel) expands the grid to fill the window;
   because the cell count changes, toggling restarts the match. **Esc** exits.
 - **Game over** — when the match is decided ([above](#match-end--game-records)) the loop
@@ -327,6 +338,10 @@ for that player's component — Union-Find is an optimization for the common cas
   someone's trail (a capture / elimination event); walking onto an opponent's *territory* cell is
   disallowed/treated as a wall, so cuts only happen via the trail-crossing rule, not by
   driving through someone's land.
+- Being **completely enclosed** → you sink too. If an opponent's capture fill flips every
+  last cell you owned, you're eliminated at the end of that tick and respawn on the normal
+  timer (it isn't a trail cut, so it doesn't count toward anyone's capture tally). See
+  [Elimination & respawn](#elimination--respawn).
 
 ## Architecture
 

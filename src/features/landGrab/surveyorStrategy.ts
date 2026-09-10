@@ -1,37 +1,74 @@
 import { DEFAULT_BOT_PROFILE, SURVEYOR_PROFILE_FIELDS } from "./botProfile";
-import { ALL_DIRECTIONS, DELTA, OPPOSITE } from "./geometry";
+import { ALL_DIRECTIONS, DELTA } from "./geometry";
 import type { CellState } from "./grid";
 import type { BotStrategy } from "./botStrategy";
 import type { GameState, PlayerState } from "./simulation";
 import type { Direction, Vec2 } from "./types";
 
 /**
- * The Surveyor — Phase 3 of the rollout in `docs/land-grab/bots.md`.
+ * The Surveyor — the goal-oriented territory farmer, in contrast to the Rambler's
+ * greedy roaming. It grows one contiguous blob outward from home by laying a wake
+ * along the frontier of its own land, then folding it back in — keeping the wake
+ * short and close to owned ground so it's rarely cuttable.
  *
- * A deliberate territory farmer, in contrast to the Rambler's greedy roaming. It
- * grows one contiguous blob outward from home by repeatedly closing the largest
- * loop it can safely close *right now*, keeping its wake short and hugging the
- * frontier of its own land so it's rarely cuttable.
+ * Each extend leg reaches toward an `aim` point: centre-of-board biased, its
+ * bearing rotated a little every loop so successive loops sweep different sectors
+ * instead of re-tracing one spike. The centre bias also grows rival blobs toward
+ * each other, so a bot-vs-bot match actually comes to contact and resolves.
  *
- * Still a greedy one-cell lookahead — the only extra state is a two-value
- * objective in `botMemory` (`phase` + `hugSide`). This file imports only *types*
- * from `botStrategy.ts` / `simulation.ts`, so there's no runtime cycle.
+ * Still a greedy one-cell lookahead. `botMemory` carries a tiny objective: the
+ * current `phase`, a short trail of recent head cells (so it can never sit
+ * toggling between two squares), a stuck counter, a loop counter and the current
+ * aim. Every candidate move gets a *graded* score — there is no flat plateau for a
+ * tie-break to spin on. This file imports only *types* from `botStrategy.ts` /
+ * `simulation.ts`, so there's no runtime cycle.
  */
 export interface SurveyorMemory {
   type: "surveyor";
-  /** `"extend"` lays a wake along the frontier; `"return"` beelines home to bank it. */
+  /** `"extend"` grows a wake out toward `aim`; `"return"` heads home to bank it. */
   phase: "extend" | "return";
-  /** Which way owned land lies from the head — the direction to curl so the loop stays chunky. */
-  hugSide: Direction | null;
+  /** Recent head cells, oldest first — bans immediate backtracking and breaks orbit loops. */
+  recent: Vec2[];
+  /** Consecutive ticks stuck in `extend` with no wake out; trips the walk-home-and-regroup fallback. */
+  stuckTicks: number;
+  /** Bumped at the start of every extend leg; rotates the aim bearing so loops don't repeat. */
+  loopCount: number;
+  /** Board cell this extend leg reaches toward — centre-biased, rotated by `loopCount`. */
+  aim: Vec2 | null;
 }
 
 /** A fresh Surveyor scratch bag; called on spawn and every respawn. */
 export function createSurveyorMemory(): SurveyorMemory {
-  return { type: "surveyor", phase: "extend", hugSide: null };
+  return { type: "surveyor", phase: "extend", recent: [], stuckTicks: 0, loopCount: 0, aim: null };
 }
 
-/** Tiny nudge toward `hugSide` so the extend leg curls rather than drawing a straight tendril. */
-const CURL_BONUS = 0.5;
+// --- Tuning constants. The four BotProfile knobs (maxTrailExposure, targetTrailLength,
+// frontierHugBonus, rivalAvoidRadius) stay panel-editable; these shape the scoring
+// gradients and don't need a slider. ---
+/** How many past head cells to remember for anti-backtracking / orbit-breaking. */
+const RECENT_LEN = 8;
+/** Score hit for revisiting a remembered cell, scaled by how recent the visit was. */
+const REVISIT_WEIGHT = 6;
+/** Score for stepping straight back onto the cell we just left — the toggle killer. Below any real move. */
+const BACKTRACK_PENALTY = -300;
+/** Pull out of your own blob toward the nearest open water, per step of distance. */
+const FRONTIER_SEEK = 1.5;
+/** Base score for crossing your own territory mid-extend: below any wake-laying move, above a revisit. */
+const TERRITORY_BASE = -8;
+/** Base score for crossing your own wake mid-extend: worse than territory — it tangles the loop. */
+const TRAIL_BASE = -12;
+/** Per-cell penalty once the head has drifted past `maxTrailExposure` from owned land (a slope, not a cliff). */
+const EXPOSURE_WEIGHT = 8;
+/** Score hit for stepping onto a cell that touches a living rival's head. */
+const RIVAL_ADJ_PENALTY = -50;
+/** Bonus for stepping onto a rival's wake — that's a cut. Enough to reliably take one when adjacent. */
+const CUT_BONUS = 8;
+/** Ticks in `extend` with no wake before the Surveyor gives up and walks home to regroup. */
+const STUCK_LIMIT = 30;
+/** Per-step reward for closing distance to this loop's `aim` point — steers which way the wake sweeps. */
+const AIM_PULL = 1.5;
+/** Number of distinct aim bearings before the rotation repeats (they fan across the board interior). */
+const SWEEP_ROTATE = 4;
 
 function inBounds(rowCount: number, colCount: number, cell: Vec2): boolean {
   return cell.row >= 0 && cell.row < rowCount && cell.col >= 0 && cell.col < colCount;
@@ -70,6 +107,39 @@ export function nearestOwnedDistance(
         if (seen.has(key)) continue;
         seen.add(key);
         if (isOwned(grid, playerId, n)) return dist;
+        next.push(n);
+      }
+    }
+    if (next.length === 0) break;
+    frontier = next;
+  }
+  return Infinity;
+}
+
+/**
+ * 4-connected step distance from `cell` to the nearest neutral (unclaimed) cell,
+ * pathing through anything in between. Bounded: gives up after `maxRadius` rings
+ * and returns `Infinity`. `cell` itself is distance 0 when it's already neutral.
+ * Used to pull a buried Surveyor back out to open water where it can lay a wake.
+ */
+export function nearestNeutralDistance(grid: CellState[][], cell: Vec2, maxRadius = 16): number {
+  const rowCount = grid.length;
+  const colCount = grid[0]?.length ?? 0;
+  if (!inBounds(rowCount, colCount, cell)) return Infinity;
+  if (grid[cell.row][cell.col].kind === "neutral") return 0;
+
+  const seen = new Set<string>([`${cell.row},${cell.col}`]);
+  let frontier: Vec2[] = [cell];
+  for (let dist = 1; dist <= maxRadius; dist++) {
+    const next: Vec2[] = [];
+    for (const cur of frontier) {
+      for (const dir of ALL_DIRECTIONS) {
+        const n = { row: cur.row + DELTA[dir].row, col: cur.col + DELTA[dir].col };
+        if (!inBounds(rowCount, colCount, n)) continue;
+        const key = `${n.row},${n.col}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (grid[n.row][n.col].kind === "neutral") return dist;
         next.push(n);
       }
     }
@@ -135,103 +205,164 @@ function isAdjacentToRivalHead(state: GameState, player: PlayerState, cell: Vec2
   return false;
 }
 
-/** Which cardinal direction owned land lies in from `cell`, by a short nearest-owned probe; `null` if none near. */
-function ownedSideOf(grid: CellState[][], playerId: string, cell: Vec2): Direction | null {
-  let best: Direction | null = null;
-  let bestDist = Infinity;
-  for (const dir of ALL_DIRECTIONS) {
-    const n = { row: cell.row + DELTA[dir].row, col: cell.col + DELTA[dir].col };
-    const d = nearestOwnedDistance(grid, playerId, n, 8);
-    if (d < bestDist) {
-      bestDist = d;
-      best = dir;
-    }
+function sameCell(a: Vec2, b: Vec2): boolean {
+  return a.row === b.row && a.col === b.col;
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+
+function manhattan(a: Vec2, b: Vec2): number {
+  return Math.abs(a.row - b.row) + Math.abs(a.col - b.col);
+}
+
+/**
+ * A target cell for the next extend leg: a point `reach` cells from `head` along a
+ * board-centre bearing that is rotated by `loopCount`, so successive loops sweep
+ * across a ~180° fan facing the open interior instead of re-tracing one spike.
+ * The centre bias also walks rival blobs toward each other, so a bot match resolves.
+ */
+function computeAim(state: GameState, head: Vec2, loopCount: number, reach: number): Vec2 {
+  const cRow = (state.rowCount - 1) / 2;
+  const cCol = (state.colCount - 1) / 2;
+  let vr = cRow - head.row;
+  let vc = cCol - head.col;
+  const mag = Math.hypot(vr, vc);
+  if (mag < 1) {
+    vr = 0;
+    vc = 1; // head is ~centred: pick any bearing, the rotation still fans it out
+  } else {
+    vr /= mag;
+    vc /= mag;
   }
-  return Number.isFinite(bestDist) ? best : null;
+  // Swing ±(SWEEP_ROTATE-1)/2 * 60° around the centreward bearing, stepping per loop.
+  const angle = ((loopCount % SWEEP_ROTATE) - (SWEEP_ROTATE - 1) / 2) * (Math.PI / 3);
+  const rr = vr * Math.cos(angle) - vc * Math.sin(angle);
+  const rc = vr * Math.sin(angle) + vc * Math.cos(angle);
+  return {
+    row: clamp(Math.round(head.row + rr * reach), 0, state.rowCount - 1),
+    col: clamp(Math.round(head.col + rc * reach), 0, state.colCount - 1),
+  };
 }
 
 function surveyorDecide(state: GameState, player: PlayerState, memory: SurveyorMemory): Direction {
   const p = player.profile;
   const grid = state.grid;
+  const head = player.head;
   const trailLen = player.trail.length;
-  const candidates = ALL_DIRECTIONS.filter((d) => d !== OPPOSITE[player.facing] || trailLen === 0);
+  const onOwnLand = isOwned(grid, player.id, head);
 
-  // --- phase arbitration, with hysteresis so it doesn't flip on the boundary ---
-  if (trailLen === 0) memory.phase = "extend"; // fresh leg after a bank or respawn
-  const rivalClose = nearestRivalHeadDistance(state, player) <= p.rivalAvoidRadius;
+  // --- anti-oscillation memory: log where we are, remember the last RECENT_LEN cells ---
+  const recent = memory.recent;
+  if (recent.length === 0 || !sameCell(recent[recent.length - 1], head)) {
+    recent.push({ row: head.row, col: head.col });
+    if (recent.length > RECENT_LEN) recent.shift();
+  }
+  const cameFrom = recent.length >= 2 ? recent[recent.length - 2] : null;
+
+  // --- phase arbitration ---
+  const aimReach = Math.max(p.targetTrailLength, p.maxTrailExposure + 4);
+  const rivalDist = nearestRivalHeadDistance(state, player);
+  // Only bail out of extending for a rival if we've already got a wake worth
+  // banking, or the rival is right on top of us — otherwise keep growing toward
+  // contested ground so the match actually comes to contact.
+  const rivalThreat =
+    rivalDist <= p.rivalAvoidRadius && (trailLen >= p.targetTrailLength / 2 || rivalDist <= 1);
   const loopWorthClosing =
     trailLen >= p.targetTrailLength &&
-    estimateEnclosedArea(player.trail, player.head) >= p.targetTrailLength;
-  if (memory.phase === "extend" && (rivalClose || loopWorthClosing)) memory.phase = "return";
+    estimateEnclosedArea(player.trail, head) >= Math.min(6, p.targetTrailLength);
+  const reachedAim = trailLen > 0 && memory.aim != null && manhattan(head, memory.aim) <= 1;
 
-  // Boxed in and still not closed → degrade to a plain homesick beeline so the
-  // bot can never freeze. This is the Surveyor falling back to Rambler-style
-  // recovery, not a separate code path.
-  const deadlocked = trailLen >= 2 * p.targetTrailLength;
-
-  // Track which way owned land lies, so the extend leg curls to enclose area.
-  if (memory.phase === "extend" && !deadlocked) {
-    memory.hugSide = ownedSideOf(grid, player.id, player.head) ?? memory.hugSide;
+  if (memory.phase === "return") {
+    // Back on our own land with the wake banked → start a fresh loop, next sector.
+    if (trailLen === 0 && onOwnLand) {
+      memory.phase = "extend";
+      memory.stuckTicks = 0;
+      memory.loopCount += 1;
+      memory.aim = computeAim(state, head, memory.loopCount, aimReach);
+    }
+  } else if (trailLen > 0) {
+    memory.stuckTicks = 0;
+    if (loopWorthClosing || reachedAim || rivalThreat) memory.phase = "return";
+  } else {
+    // In extend but no wake out yet — still working our way to the frontier.
+    if (memory.aim == null) memory.aim = computeAim(state, head, memory.loopCount, aimReach);
+    memory.stuckTicks += 1;
+    if (rivalThreat || memory.stuckTicks > STUCK_LIMIT) memory.phase = "return";
   }
 
-  function scoreFor(dir: Direction, returning: boolean): number {
-    const next = { row: player.head.row + DELTA[dir].row, col: player.head.col + DELTA[dir].col };
+  // Wandered a wake twice as long as the target without closing → force the
+  // return leg so the bot can never freeze mid-loop.
+  const deadlocked = trailLen >= 2 * p.targetTrailLength;
+  const returning = memory.phase === "return" || deadlocked;
+
+  /** Penalty for stepping onto a cell we've stood on recently — bigger the more recent. */
+  function revisitPenalty(next: Vec2): number {
+    for (let idx = recent.length - 1; idx >= 0; idx--) {
+      if (!sameCell(recent[idx], next)) continue;
+      const age = recent.length - 1 - idx; // 0 = current head, 1 = came-from
+      return age <= 1 ? 0 : (RECENT_LEN - age) * REVISIT_WEIGHT;
+    }
+    return 0;
+  }
+
+  function score(dir: Direction): number {
+    const next = { row: head.row + DELTA[dir].row, col: head.col + DELTA[dir].col };
     if (!inBounds(state.rowCount, state.colCount, next)) return p.offBoardPenalty;
+    // Never walk straight back onto the cell we just left — this is what stops the
+    // two-cell toggle. Ranked below every real move but above going off the board.
+    if (cameFrom && sameCell(cameFrom, next)) return BACKTRACK_PENALTY;
 
     const cell = grid[next.row][next.col];
     const distanceToHome = Math.abs(next.row - player.home.row) + Math.abs(next.col - player.home.col);
-
-    // Our own wake never banks anything now. Returning → clear path home;
-    // extending → steer clear so the wake doesn't tangle into itself.
-    if (cell.kind === "trail" && cell.playerId === player.id) {
-      return returning ? -distanceToHome : p.earlyLoopPenalty;
-    }
+    let s = -revisitPenalty(next);
 
     if (returning) {
+      // Beeline home; stepping onto our own colour with a wake out banks the loop.
+      if (cell.kind === "trail" && cell.playerId === player.id) return s - distanceToHome;
       const banking = cell.kind === "territory" && cell.playerId === player.id && trailLen > 0;
-      return banking ? p.closeLoopReward - distanceToHome : -distanceToHome;
+      return banking ? s + p.closeLoopReward - distanceToHome : s - distanceToHome;
     }
 
-    // --- extend leg ---
-    const ownedDist = nearestOwnedDistance(grid, player.id, next, p.maxTrailExposure + 2);
-    // Hard guards the Rambler doesn't have: keep the head near owned land, and
-    // never stray onto a cell touching a rival head.
-    if (ownedDist > p.maxTrailExposure) return p.offBoardPenalty;
-    if (isAdjacentToRivalHead(state, player, next)) return p.offBoardPenalty;
-    // Diving straight back onto our own colour mid-leg wastes the loop.
-    if (cell.kind === "territory" && cell.playerId === player.id) return p.earlyLoopPenalty;
+    // --- extend leg: always graded, never a flat tie ---
+    if (isAdjacentToRivalHead(state, player, next)) s += RIVAL_ADJ_PENALTY;
 
-    let s = 0;
-    if (isFrontierAdjacent(grid, player.id, next)) s += p.frontierHugBonus; // stay one cell out
+    if (cell.kind === "territory" && cell.playerId === player.id) {
+      // On our own land: head for the nearest open water so a wake can (re)start.
+      const toWater = Math.min(nearestNeutralDistance(grid, next, 24), 24);
+      return s + TERRITORY_BASE - toWater * FRONTIER_SEEK;
+    }
+    if (cell.kind === "trail" && cell.playerId === player.id) {
+      const toWater = Math.min(nearestNeutralDistance(grid, next, 24), 24);
+      return s + TRAIL_BASE - toWater * FRONTIER_SEEK;
+    }
+    if (cell.kind === "trail") {
+      s += CUT_BONUS; // a rival's wake — stepping on it cuts them, free value in passing
+    }
+
+    const ownedDist = nearestOwnedDistance(grid, player.id, next, p.maxTrailExposure + 6);
+    if (isFrontierAdjacent(grid, player.id, next)) s += p.frontierHugBonus; // hug one cell out
     if (cell.kind === "neutral") s += p.neutralBonus; // prefer unclaimed water
-    if (memory.hugSide && dir === memory.hugSide) s += CURL_BONUS; // curl to enclose area
+    if (ownedDist > p.maxTrailExposure) s -= (ownedDist - p.maxTrailExposure) * EXPOSURE_WEIGHT;
+    // Sweep toward this loop's aim sector — this is what varies the loop and drives
+    // growth toward the board interior (and toward rivals) instead of one spike.
+    if (memory.aim) s += (manhattan(head, memory.aim) - manhattan(next, memory.aim)) * AIM_PULL;
     s -= ownedDist * p.homePull; // faint pull back toward safe land
     s += Math.random() * p.jitter; // so two Surveyors don't lock-step
     return s;
   }
 
-  function pickBest(returning: boolean): { dir: Direction; score: number } {
-    let dir: Direction = candidates[0] ?? player.facing;
-    let score = -Infinity;
-    for (const d of candidates) {
-      const s = scoreFor(d, returning);
-      if (s > score) {
-        score = s;
-        dir = d;
-      }
+  let best: Direction = player.facing;
+  let bestScore = -Infinity;
+  for (const dir of ALL_DIRECTIONS) {
+    const sc = score(dir);
+    if (sc > bestScore) {
+      bestScore = sc;
+      best = dir;
     }
-    return { dir, score };
   }
-
-  const returning = memory.phase === "return" || deadlocked;
-  let result = pickBest(returning);
-  // Frontier unreachable — every extend move is a self-cross or worse. Give up on
-  // this leg and beeline home rather than wiggle in place forever.
-  if (!returning && result.score <= p.earlyLoopPenalty) {
-    memory.phase = "return";
-    result = pickBest(true);
-  }
-  return result.dir;
+  return best;
 }
 
 export const surveyor: BotStrategy = {

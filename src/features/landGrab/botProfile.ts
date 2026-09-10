@@ -41,8 +41,8 @@ export const DEFAULT_BOT_PROFILE: BotProfile = {
   neutralBonus: 2,
   homePull: 0.01,
   jitter: 0.5,
-  maxTrailExposure: 4,
-  targetTrailLength: 14,
+  maxTrailExposure: 5,
+  targetTrailLength: 10,
   frontierHugBonus: 3,
   rivalAvoidRadius: 3,
 };

@@ -8,6 +8,7 @@ import {
   createSurveyorMemory,
   estimateEnclosedArea,
   isFrontierAdjacent,
+  nearestNeutralDistance,
   nearestOwnedDistance,
   nearestRivalHeadDistance,
   surveyor,
@@ -53,6 +54,28 @@ describe("nearestOwnedDistance", () => {
     expect(nearestOwnedDistance(grid, "p1", { row: 0, col: 0 }, 3)).toBe(Infinity);
     expect(nearestOwnedDistance(grid, "p1", { row: -1, col: 0 })).toBe(Infinity);
     expect(nearestOwnedDistance(grid, "nobody", { row: 0, col: 0 })).toBe(Infinity);
+  });
+});
+
+describe("nearestNeutralDistance", () => {
+  // A 5x5 blob of p1 territory in the middle of a 9x9 board, everything else neutral.
+  const grid = createEmptyGrid(9, 9);
+  for (let r = 2; r <= 6; r++) {
+    for (let c = 2; c <= 6; c++) grid[r][c] = { kind: "territory", playerId: "p1" };
+  }
+
+  it("is 0 on a neutral cell", () => {
+    expect(nearestNeutralDistance(grid, { row: 0, col: 0 })).toBe(0);
+  });
+
+  it("counts steps out of a blob to the nearest open water", () => {
+    expect(nearestNeutralDistance(grid, { row: 2, col: 4 })).toBe(1); // blob edge
+    expect(nearestNeutralDistance(grid, { row: 4, col: 4 })).toBe(3); // blob centre
+  });
+
+  it("returns Infinity past the radius cap or off the board", () => {
+    expect(nearestNeutralDistance(grid, { row: 4, col: 4 }, 2)).toBe(Infinity);
+    expect(nearestNeutralDistance(grid, { row: -1, col: 0 })).toBe(Infinity);
   });
 });
 
@@ -143,7 +166,7 @@ describe("surveyor registry wiring", () => {
   });
 
   it("createBotMemory returns a fresh, tagged surveyor bag", () => {
-    expect(createBotMemory("surveyor")).toEqual({ type: "surveyor", phase: "extend", hugSide: null });
+    expect(createBotMemory("surveyor")).toEqual({ type: "surveyor", phase: "extend", recent: [], stuckTicks: 0, loopCount: 0, aim: null });
     expect(createSurveyorMemory()).not.toBe(createSurveyorMemory());
   });
 });
@@ -155,7 +178,7 @@ describe("surveyor through the simulation", () => {
       { id: "bot", label: "Bot", color: 2, isBot: true, botType: "surveyor" },
     ]);
     expect(state.players.bot.botType).toBe("surveyor");
-    expect(state.players.bot.botMemory).toEqual({ type: "surveyor", phase: "extend", hugSide: null });
+    expect(state.players.bot.botMemory).toEqual({ type: "surveyor", phase: "extend", recent: [], stuckTicks: 0, loopCount: 0, aim: null });
   });
 
   it("drives the bot each tick, keeps it alive, and grows its territory", () => {
@@ -163,38 +186,105 @@ describe("surveyor through the simulation", () => {
       { id: "surv", label: "Surveyor", color: 1, isBot: true, botType: "surveyor" },
       { id: "roam", label: "Rambler", color: 2, isBot: true, botType: "rambler" },
     ];
-    let state = createInitialGameState(16, 16, configs, { respawnDelayTicks: 4 });
+    let state = createInitialGameState(18, 18, configs, { respawnDelayTicks: 4 });
     const startOwned = state.players.surv.ownedCount;
     const seenHeads = new Set<string>();
+    let peakOwned = startOwned;
 
     for (let i = 0; i < 300 && !state.winnerId; i++) {
       state = stepGame(state);
       seenHeads.add(`${state.players.surv.head.row},${state.players.surv.head.col}`);
+      peakOwned = Math.max(peakOwned, state.players.surv.ownedCount);
     }
 
     expect(seenHeads.size).toBeGreaterThan(8); // moved around on its own
-    expect(state.players.surv.ownedCount).toBeGreaterThan(startOwned); // closed at least one loop
-    expect(["extend", "return"]).toContain(
-      (state.players.surv.botMemory as { phase: string }).phase,
-    );
+    expect(peakOwned).toBeGreaterThan(startOwned); // closed at least one loop along the way
+    const mem = state.players.surv.botMemory as { phase: string; loopCount: number };
+    expect(["extend", "return"]).toContain(mem.phase);
+    expect(mem.loopCount).toBeGreaterThanOrEqual(1); // banked at least one loop
     for (const p of Object.values(state.players)) {
       expect(Number.isFinite(p.ownedCount)).toBe(true);
     }
   });
 
-  it("never freezes a boxed-in surveyor — the return-leg fallback always makes progress", () => {
-    // Tiny board, tight exposure: the surveyor cannot reach a 14-long wake, so it
-    // must fall back to a homesick beeline rather than wiggle forever.
-    const state0 = createInitialGameState(9, 9, [
+  it("sweeps different sectors instead of re-tracing one spike", () => {
+    let state = createInitialGameState(15, 15, [
       { id: "surv", label: "Surveyor", color: 1, isBot: true, botType: "surveyor" },
     ]);
-    let state = state0;
+    const startOwned = state.players.surv.ownedCount;
+    let peakOwned = startOwned;
+    for (let i = 0; i < 800 && !state.winnerId; i++) {
+      state = stepGame(state);
+      peakOwned = Math.max(peakOwned, state.players.surv.ownedCount);
+    }
+    const mem = state.players.surv.botMemory as { loopCount: number };
+    expect(mem.loopCount).toBeGreaterThanOrEqual(4); // many loops
+    // The old fixed-spike bug grew ~1-2 cells per loop; a real sweep grows fast.
+    expect(peakOwned).toBeGreaterThan(startOwned + 40);
+  });
+
+  it("grows two surveyors toward each other so a bot-only match resolves", () => {
+    const configs: PlayerConfig[] = [
+      { id: "s1", label: "S1", color: 1, isBot: true, botType: "surveyor" },
+      { id: "s2", label: "S2", color: 2, isBot: true, botType: "surveyor" },
+    ];
+    let state = createInitialGameState(13, 13, configs, { respawnDelayTicks: 6 });
+    let closest = Infinity;
+    let i = 0;
+    for (; i < 2500 && !state.winnerId; i++) {
+      state = stepGame(state);
+      const a = state.players.s1;
+      const b = state.players.s2;
+      if (a.alive && b.alive) {
+        closest = Math.min(closest, Math.abs(a.head.row - b.head.row) + Math.abs(a.head.col - b.head.col));
+      }
+    }
+    // Old behaviour: each bot farmed its own corner spike forever and the two
+    // never met. Now they push toward the centre → contact → the match ends.
+    expect(state.winnerId).not.toBeNull();
+    expect(closest).toBeLessThan(6);
+  });
+
+  it("never settles into a two-cell toggle (the reported bug)", () => {
+    // Two surveyors + a rambler on a normal board, run long enough for the blobs
+    // to grow and crowd each surveyor. A toggling bot would revisit the same 1-2
+    // cells; assert every 8-tick window of head positions spans at least 3 cells.
+    const configs: PlayerConfig[] = [
+      { id: "s1", label: "S1", color: 1, isBot: true, botType: "surveyor" },
+      { id: "s2", label: "S2", color: 2, isBot: true, botType: "surveyor" },
+      { id: "r1", label: "R1", color: 3, isBot: true, botType: "rambler" },
+    ];
+    let state = createInitialGameState(16, 20, configs, { respawnDelayTicks: 6 });
+    const heads: Record<string, string[]> = { s1: [], s2: [] };
+
+    for (let i = 0; i < 400 && !state.winnerId; i++) {
+      state = stepGame(state);
+      for (const id of ["s1", "s2"]) {
+        const player = state.players[id];
+        if (player.alive) heads[id].push(`${player.head.row},${player.head.col}`); // ignore respawn waits
+      }
+    }
+
+    for (const id of ["s1", "s2"]) {
+      const seq = heads[id];
+      expect(seq.length).toBeGreaterThan(80); // it stayed alive and moving for most of the run
+      let worst = Infinity;
+      for (let i = 0; i + 8 <= seq.length; i++) {
+        worst = Math.min(worst, new Set(seq.slice(i, i + 8)).size);
+      }
+      expect(worst).toBeGreaterThanOrEqual(3); // no 8-move stretch pinned to two cells
+    }
+  });
+
+  it("keeps a lone surveyor roaming a wide, roughly monotone spread of cells", () => {
+    let state = createInitialGameState(14, 14, [
+      { id: "surv", label: "Surveyor", color: 1, isBot: true, botType: "surveyor" },
+    ]);
     const seenHeads = new Set<string>();
-    for (let i = 0; i < 120 && !state.winnerId; i++) {
+    for (let i = 0; i < 200 && !state.winnerId; i++) {
       state = stepGame(state);
       seenHeads.add(`${state.players.surv.head.row},${state.players.surv.head.col}`);
     }
-    // A frozen bot would revisit the same 1–2 cells; a progressing one roams.
-    expect(seenHeads.size).toBeGreaterThan(6);
+    expect(seenHeads.size).toBeGreaterThan(20);
   });
 });

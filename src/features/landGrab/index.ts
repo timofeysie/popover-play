@@ -14,6 +14,7 @@ export type { BotType, BotMemory, BotStrategy } from "./botStrategy";
 export {
   createSurveyorMemory,
   nearestOwnedDistance,
+  nearestNeutralDistance,
   isFrontierAdjacent,
   estimateEnclosedArea,
   nearestRivalHeadDistance,

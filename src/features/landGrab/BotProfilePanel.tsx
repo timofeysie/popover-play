@@ -1,4 +1,5 @@
-import { BOT_PROFILE_FIELDS, type BotProfile } from "./botProfile";
+import type { BotProfile } from "./botProfile";
+import { BOT_STRATEGIES, strategyFor, type BotType } from "./botStrategy";
 import type { GameRules, PlayerConfig } from "./simulation";
 import { MAX_USERNAME_LENGTH, resolveUsername } from "./userProfile";
 
@@ -9,6 +10,12 @@ function colorToHex(color: number): string {
 function formatValue(value: number): string {
   return Number.isInteger(value) ? String(value) : String(parseFloat(value.toFixed(2)));
 }
+
+/** One-liner under the archetype picker on each driven card. `Record<BotType, …>` so a new archetype can't skip it. */
+const ARCHETYPE_BLURB: Record<BotType, string> = {
+  rambler: "Greedy roamer — strikes out into open water, then beelines home to bank a small loop.",
+  surveyor: "Territory farmer — hugs its own frontier one cell out and folds in short, chunky loops.",
+};
 
 /** The fixed rules a keyboard-controlled human plays by — shown read-only. */
 const HUMAN_RULES = [
@@ -24,10 +31,13 @@ export interface BotProfilePanelProps {
   username: string;
   profiles: Record<string, BotProfile>;
   autopilot: Record<string, boolean>;
+  /** Which archetype drives each player — bots always, a human only while on autopilot. */
+  botTypes: Record<string, BotType>;
   rules: GameRules;
   onUsernameChange: (value: string) => void;
   onProfileChange: (id: string, key: keyof BotProfile, value: number) => void;
   onAutopilotChange: (id: string, on: boolean) => void;
+  onBotTypeChange: (id: string, type: BotType) => void;
   onResetProfile: (id: string) => void;
   onResetAll: () => void;
   onRulesChange: (patch: Partial<GameRules>) => void;
@@ -39,10 +49,12 @@ export function BotProfilePanel({
   username,
   profiles,
   autopilot,
+  botTypes,
   rules,
   onUsernameChange,
   onProfileChange,
   onAutopilotChange,
+  onBotTypeChange,
   onResetProfile,
   onResetAll,
   onRulesChange,
@@ -82,8 +94,13 @@ export function BotProfilePanel({
           const isHuman = config.id === humanId;
           const driven = !isHuman || autopilot[config.id];
           const profile = profiles[config.id];
+          const archetype = strategyFor(botTypes[config.id]);
           return (
-            <div key={config.id} className="rounded-lg border border-border bg-background/40 p-3">
+            <div
+              key={config.id}
+              data-testid={`bot-card-${config.id}`}
+              className="rounded-lg border border-border bg-background/40 p-3"
+            >
               <div className="flex items-center gap-2 mb-2">
                 <span
                   className="w-3 h-3 rounded-full inline-block shrink-0"
@@ -95,6 +112,11 @@ export function BotProfilePanel({
                 <span className="text-[10px] uppercase tracking-wide text-muted-foreground border border-border rounded px-1 py-px">
                   {isHuman ? "you" : "bot"}
                 </span>
+                {driven && (
+                  <span className="text-[10px] uppercase tracking-wide text-primary border border-primary/40 rounded px-1 py-px">
+                    {archetype.label}
+                  </span>
+                )}
                 {driven && (
                   <button
                     onClick={() => onResetProfile(config.id)}
@@ -142,7 +164,24 @@ export function BotProfilePanel({
                 </ul>
               ) : (
                 <div className="flex flex-col gap-2.5">
-                  {BOT_PROFILE_FIELDS.map((field) => {
+                  <label className="flex items-center justify-between gap-2 text-xs text-foreground">
+                    <span className="font-medium">Archetype</span>
+                    <select
+                      value={botTypes[config.id] ?? archetype.type}
+                      onChange={(e) => onBotTypeChange(config.id, e.target.value as BotType)}
+                      className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+                    >
+                      {Object.values(BOT_STRATEGIES).map((s) => (
+                        <option key={s.type} value={s.type}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="text-[11px] leading-snug text-muted-foreground -mt-1">
+                    {ARCHETYPE_BLURB[archetype.type]}
+                  </p>
+                  {archetype.fields.map((field) => {
                     const inputId = `${config.id}-${field.key}`;
                     return (
                       <div key={field.key}>

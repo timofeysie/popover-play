@@ -159,6 +159,21 @@ function claimCells(grid: CellState[][], cells: Vec2[], playerId: string): CellS
   return next;
 }
 
+/** Wipe a player's live wake off the board — used when they're sunk with no land left to close onto. */
+function clearTrailCells(grid: CellState[][], playerId: string): CellState[][] {
+  let changed = false;
+  const next = grid.map((row) =>
+    row.map((cell): CellState => {
+      if (cell.kind === "trail" && cell.playerId === playerId) {
+        changed = true;
+        return { kind: "neutral" };
+      }
+      return cell;
+    }),
+  );
+  return changed ? next : grid;
+}
+
 /** Repaint every `fromId` territory cell as `toId` — used when a trail cut hands one player's land to another. */
 function transferTerritory(grid: CellState[][], fromId: string, toId: string): CellState[][] {
   let changed = false;
@@ -341,6 +356,19 @@ export function stepGame(state: GameState): GameState {
 
   for (const player of Object.values(players)) {
     player.ownedCount = countOwnedCells(grid, player.id);
+  }
+
+  // Someone whose entire territory was just swallowed by another player's
+  // capture loop is finished: they're still afloat but hold zero ground, so
+  // there's nothing left to close a loop onto. Sink them the same way a
+  // trail-cut victim is sunk, and clear their now-orphaned wake off the board.
+  for (const player of Object.values(players)) {
+    if (!player.alive || !player.hasStarted || player.ownedCount > 0) continue;
+    player.alive = false;
+    player.trail = [];
+    player.queuedFacing = null;
+    player.respawnAt = nextTick + rules.respawnDelayTicks;
+    grid = clearTrailCells(grid, player.id);
   }
 
   const winnerId = findWinner(state, players, grid);
