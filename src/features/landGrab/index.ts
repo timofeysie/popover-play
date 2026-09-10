@@ -7,10 +7,12 @@ export {
   buildGameRecord,
   saveGameRecord,
   loadGameRecords,
+  clearGameRecords,
   GAME_RECORDS_STORAGE_KEY,
   MAX_STORED_GAME_RECORDS,
 } from "./gameRecord";
 export type { LandGrabGameRecord, LandGrabPlayerRecord } from "./gameRecord";
+export { MatchRecordsPanel } from "./MatchRecordsPanel";
 export { resolveCapture, createEmptyGrid, countOwnedCells } from "./grid";
 export type { CellState } from "./grid";
 export { resolveTerritorySplit } from "./splitResolution";

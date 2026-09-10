@@ -13,6 +13,7 @@ import {
 } from "./simulation";
 import { cloneProfile, DEFAULT_BOT_PROFILE, type BotProfile } from "./botProfile";
 import { BotProfilePanel } from "./BotProfilePanel";
+import { MatchRecordsPanel } from "./MatchRecordsPanel";
 import { buildGameRecord, saveGameRecord, type LandGrabGameRecord } from "./gameRecord";
 import type { Direction } from "./types";
 import {
@@ -231,6 +232,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   const [paused, setPaused] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [showProfiles, setShowProfiles] = useState(false);
+  const [showRecords, setShowRecords] = useState(false);
   const [profiles, setProfiles] = useState<Record<string, BotProfile>>(makeInitialProfiles);
   const [autopilot, setAutopilot] = useState<Record<string, boolean>>(makeInitialAutopilot);
   const [rules, setRules] = useState<GameRules>({ ...DEFAULT_GAME_RULES });
@@ -435,13 +437,20 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
               >
                 {showProfiles ? "Hide profiles" : "Profiles"}
               </button>
+              <button
+                onClick={() => setShowRecords((s) => !s)}
+                className="px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+                aria-expanded={showRecords}
+              >
+                {showRecords ? "Hide records" : "Records"}
+              </button>
               <ul className="flex flex-wrap gap-4 text-sm min-[1400px]:hidden">
                 {leaderboard.map((player) => (
                   <li key={player.id} className="flex items-center gap-2">
                     <span className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: colorToHex(player.color) }} />
                     <span className="text-foreground font-medium">{player.label}</span>
                     <span className="text-muted-foreground">{player.ownedCount} cells</span>
-                    {!player.alive && <span className="text-destructive text-xs">respawning…</span>}
+                    {!player.alive && <span className="text-destructive text-xs">trying to respawn…</span>}
                   </li>
                 ))}
               </ul>
@@ -471,7 +480,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
             </ol>
             <ul className="mt-3 flex flex-col gap-1">
               {leaderboard.filter((p) => !p.alive).map((player) => (
-                <li key={player.id} className="text-destructive text-xs">{player.label} respawning…</li>
+                <li key={player.id} className="text-destructive text-xs">{player.label} trying to respawn…</li>
               ))}
             </ul>
             <button
@@ -488,6 +497,9 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
           </aside>
         )}
       </div>
+      {!hideControls && showRecords && (
+        <MatchRecordsPanel key={gameOver?.endedAt ?? "records"} />
+      )}
       {!hideControls && showProfiles && (
         <BotProfilePanel
           configs={PLAYER_CONFIGS}

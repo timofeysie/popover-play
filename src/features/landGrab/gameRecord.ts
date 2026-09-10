@@ -113,3 +113,12 @@ export function saveGameRecord(record: LandGrabGameRecord): LandGrabGameRecord[]
   }
   return next;
 }
+
+/** Drop every stored record. Silently no-ops if storage is unavailable. */
+export function clearGameRecords(): void {
+  try {
+    window.localStorage.removeItem(GAME_RECORDS_STORAGE_KEY);
+  } catch {
+    // Private-mode / no-DOM — nothing to clear.
+  }
+}
