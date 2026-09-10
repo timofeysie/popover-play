@@ -2,8 +2,10 @@
 
 What Land Grab remembers about a finished match, where it lives, and what each
 field means. The code is `src/features/landGrab/gameRecord.ts` (the data model +
-storage helpers) and `src/features/landGrab/MatchRecordsPanel.tsx` (the table that
-renders it). Per-player counters are accumulated during the simulation in
+storage helpers), `src/features/landGrab/MatchRecordsPanel.tsx` (the tabbed panel
+that renders it), `src/features/landGrab/recordStats.ts` (the pure leaderboard
+aggregation), and `src/features/landGrab/MatchRecordsChart.tsx` (the leaderboard
+chart). Per-player counters are accumulated during the simulation in
 `src/features/landGrab/simulation.ts`.
 
 ## Where it's stored
@@ -91,6 +93,13 @@ All three per-player stats live on `PlayerState` and are carried tick to tick by
 
 ## What the panel shows (`MatchRecordsPanel`)
 
+The header (title, storage note, "Refresh", "Clear all") is shared; below it a
+two-tab view (`src/components/ui/tabs.tsx`) switches between **Table** and
+**Leaderboard**. "Refresh" re-reads `localStorage`; "Clear all" removes the key.
+Both tabs read the same in-memory `records` array, so a refresh updates both.
+
+### Table tab (`RecordsTable`)
+
 One row per stored match, newest first:
 
 - **When** — local date + time from `endedAt`.
@@ -103,4 +112,39 @@ One row per stored match, newest first:
   `peakOwnedCount` descending. Each entry is `label — peakOwnedCount (peak%) peak`,
   followed by `· sunk N×` when `timesCaptured > 0`.
 
-"Refresh" re-reads `localStorage`; "Clear all" removes the key.
+### Leaderboard tab (`MatchRecordsChart` + `recordStats.ts`)
+
+An aggregate view across **all** stored matches, not one row per match. Every
+player (bots and the human alike) is collapsed to a single row by their stable
+`id`; the most recent match supplies the displayed `label` and `color`, so a
+renamed human stays one row.
+
+`rankPlayers(records)` (pure, unit-tested in `src/test/landGrabRecordStats.test.ts`)
+produces one `PlayerRanking` per player with `matches`, `wins`, `winRate`,
+`avgPeakFraction`, `bestPeakFraction`, `captures`, `timesCaptured`, `captureDiff`,
+and a composite `rating`. Rows are sorted by `rating` descending, then `winRate`,
+then `avgPeakFraction`, then `label` — a stable, total order even when ratings tie —
+and `rank` is the 1-based position after that sort.
+
+**Rating** is the mean over a player's matches of `matchRating`:
+
+```
+matchRating = (won ? 1 : 0)
+            + peakOwnedFraction            // 0..1, board share at the player's peak
+            + 0.05 * captures
+            - 0.05 * timesCaptured
+```
+
+The weights live in `RATING_WEIGHTS` in `recordStats.ts`. Winning a match is worth
+one point, dominating the board at your peak is worth up to another, and cutting /
+being cut nudge the score ±0.05 each. Averaging per match keeps a long unbeaten run
+ahead of a single lucky win. A player who never scored and was sunk repeatedly can
+land slightly negative; the bar just clamps to zero width while the number stays
+honest.
+
+The chart is a ranked horizontal bar chart — bar length is `rating` (relative to
+the top-ranked player), row order is the ranking. Each bar is filled with that
+player's own colour; identity is also carried by the dot + name so it never rests
+on colour alone. A muted line under each bar shows the breakdown
+(`matches · W (win%) · avg peak · best · captures / sunk`), also surfaced as the
+row's hover title.

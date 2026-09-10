@@ -29,7 +29,10 @@ export {
   MAX_STORED_GAME_RECORDS,
 } from "./gameRecord";
 export type { LandGrabGameRecord, LandGrabPlayerRecord } from "./gameRecord";
+export { rankPlayers, matchRating, RATING_WEIGHTS } from "./recordStats";
+export type { PlayerRanking } from "./recordStats";
 export { MatchRecordsPanel } from "./MatchRecordsPanel";
+export { MatchRecordsChart } from "./MatchRecordsChart";
 export {
   loadUserProfile,
   saveUserProfile,

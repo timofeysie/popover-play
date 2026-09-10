@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   clearGameRecords,
   loadGameRecords,
@@ -6,6 +7,7 @@ import {
   type LandGrabGameRecord,
   type LandGrabPlayerRecord,
 } from "./gameRecord";
+import { MatchRecordsChart } from "./MatchRecordsChart";
 
 /** `mm:ss` from a millisecond duration. */
 function formatDuration(ms: number): string {
@@ -47,6 +49,72 @@ function Standing({ player, isWinner }: { player: LandGrabPlayerRecord; isWinner
   );
 }
 
+function RecordsTable({ records }: { records: LandGrabGameRecord[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <th className="py-2 pr-4 font-medium">When</th>
+            <th className="py-2 pr-4 font-medium">Winner</th>
+            <th className="py-2 pr-4 font-medium text-right">Cells</th>
+            <th className="py-2 pr-4 font-medium text-right">Captures</th>
+            <th className="py-2 pr-4 font-medium text-right">Ticks</th>
+            <th className="py-2 pr-4 font-medium text-right">Time</th>
+            <th className="py-2 pr-4 font-medium text-right">Board</th>
+            <th className="py-2 font-medium">Standings (peak cells · times sunk)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {records.map((record, index) => {
+            const standings = [...record.players].sort((a, b) => b.peakOwnedCount - a.peakOwnedCount);
+            return (
+              <tr key={`${record.endedAt}-${index}`} className="border-t border-border align-top">
+                <td className="py-2 pr-4 whitespace-nowrap text-muted-foreground">
+                  {formatEndedAt(record.endedAt)}
+                </td>
+                <td className="py-2 pr-4">
+                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                    <span
+                      className="w-3 h-3 rounded-full inline-block shrink-0"
+                      style={{ backgroundColor: record.winner.color }}
+                    />
+                    <span className="text-foreground font-medium">{record.winner.label}</span>
+                  </span>
+                </td>
+                <td className="py-2 pr-4 text-right tabular-nums text-foreground">
+                  {record.winner.ownedCount} ({Math.round(record.winner.ownedFraction * 100)}%)
+                </td>
+                <td className="py-2 pr-4 text-right tabular-nums text-foreground">
+                  {record.winner.captures}
+                </td>
+                <td className="py-2 pr-4 text-right tabular-nums text-foreground">{record.ticks}</td>
+                <td className="py-2 pr-4 text-right tabular-nums text-foreground">
+                  {formatDuration(record.durationMs)}
+                </td>
+                <td className="py-2 pr-4 text-right tabular-nums text-muted-foreground whitespace-nowrap">
+                  {record.board.cols}×{record.board.rows}
+                </td>
+                <td className="py-2">
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    {standings.map((player) => (
+                      <Standing
+                        key={player.id}
+                        player={player}
+                        isWinner={player.id === record.winner.id}
+                      />
+                    ))}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function MatchRecordsPanel() {
   const [records, setRecords] = useState<LandGrabGameRecord[]>(() => loadGameRecords());
 
@@ -84,67 +152,18 @@ export function MatchRecordsPanel() {
       {records.length === 0 ? (
         <p className="text-sm text-muted-foreground">No matches recorded yet — finish a game to log one.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="py-2 pr-4 font-medium">When</th>
-                <th className="py-2 pr-4 font-medium">Winner</th>
-                <th className="py-2 pr-4 font-medium text-right">Cells</th>
-                <th className="py-2 pr-4 font-medium text-right">Captures</th>
-                <th className="py-2 pr-4 font-medium text-right">Ticks</th>
-                <th className="py-2 pr-4 font-medium text-right">Time</th>
-                <th className="py-2 pr-4 font-medium text-right">Board</th>
-                <th className="py-2 font-medium">Standings (peak cells · times sunk)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {records.map((record, index) => {
-                const standings = [...record.players].sort((a, b) => b.peakOwnedCount - a.peakOwnedCount);
-                return (
-                  <tr key={`${record.endedAt}-${index}`} className="border-t border-border align-top">
-                    <td className="py-2 pr-4 whitespace-nowrap text-muted-foreground">
-                      {formatEndedAt(record.endedAt)}
-                    </td>
-                    <td className="py-2 pr-4">
-                      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                        <span
-                          className="w-3 h-3 rounded-full inline-block shrink-0"
-                          style={{ backgroundColor: record.winner.color }}
-                        />
-                        <span className="text-foreground font-medium">{record.winner.label}</span>
-                      </span>
-                    </td>
-                    <td className="py-2 pr-4 text-right tabular-nums text-foreground">
-                      {record.winner.ownedCount} ({Math.round(record.winner.ownedFraction * 100)}%)
-                    </td>
-                    <td className="py-2 pr-4 text-right tabular-nums text-foreground">
-                      {record.winner.captures}
-                    </td>
-                    <td className="py-2 pr-4 text-right tabular-nums text-foreground">{record.ticks}</td>
-                    <td className="py-2 pr-4 text-right tabular-nums text-foreground">
-                      {formatDuration(record.durationMs)}
-                    </td>
-                    <td className="py-2 pr-4 text-right tabular-nums text-muted-foreground whitespace-nowrap">
-                      {record.board.cols}×{record.board.rows}
-                    </td>
-                    <td className="py-2">
-                      <div className="flex flex-wrap gap-x-3 gap-y-1">
-                        {standings.map((player) => (
-                          <Standing
-                            key={player.id}
-                            player={player}
-                            isWinner={player.id === record.winner.id}
-                          />
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <Tabs defaultValue="table">
+          <TabsList>
+            <TabsTrigger value="table">Table</TabsTrigger>
+            <TabsTrigger value="chart">Leaderboard</TabsTrigger>
+          </TabsList>
+          <TabsContent value="table">
+            <RecordsTable records={records} />
+          </TabsContent>
+          <TabsContent value="chart">
+            <MatchRecordsChart records={records} />
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );
