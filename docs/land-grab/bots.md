@@ -13,6 +13,7 @@ the main plan — same behaviour, more detail.
 - [Behavioural phases](#behavioural-phases)
 - [Tie-breaking and randomness](#tie-breaking-and-randomness)
 - [What the bots deliberately don't do](#what-the-bots-deliberately-dont-do)
+- [Bot types: solution architecting (planned)](#bot-types-solution-architecting-planned)
 - [Tuning them live in the demo](#tuning-them-live-in-the-demo)
 - [Tuning knobs](#tuning-knobs)
 
@@ -27,6 +28,12 @@ sails out into open water laying wake, and once its trail reaches
 `BOT_HOMESICK_TRAIL_LENGTH` (9) cells it turns "homesick" and beelines back to its own
 territory to close the loop and bank a modest capture, then repeats. Sailing back
 across its own wake does nothing on its own — the loop only closes on home turf.
+
+A design for splitting this single brain into distinct **bot archetypes** with their
+own goals — keeping the Yellow Bot on today's logic and giving Red and Green a
+deliberate, territory-farming "gradual looper" — is sketched in
+[Bot types: solution architecting](#bot-types-solution-architecting-planned). That
+section is a plan; none of it is built yet.
 
 ## The three bots
 
@@ -171,6 +178,225 @@ lookahead past one cell**. In particular:
 
 This is by design — Phase 0 only needs bots good enough to exercise the capture-fill and
 split-resolution algorithms, not to be challenging opponents.
+
+## Bot types: solution architecting (planned)
+
+> **Status:** design only. Nothing below is implemented. The intent is to agree the
+> archetype list and the registry interface here, then land it in the phases at the
+> end of this section. Until then all three bots still share the one `decideBotFacing`
+> brain described above.
+
+### Why one brain is no longer enough
+
+The capture rules changed underneath the bot AI:
+
+- **Loops only close on your own colour.** Crossing your own wake is now a no-op, so a
+  capture is a deliberate round trip: strike out, then get *all the way back* onto
+  owned land. Small, frequent, near-home loops are cheap; large deliberate enclosures
+  are where the board is actually won.
+- **Cutting a rival's trail is a full capture + bridge.** The victim's wake, your wake,
+  and every cell the victim owned all flip to your colour in one connected blob, and
+  the victim must respawn. Offence is now enormously valuable — and being caught with a
+  long exposed wake is now fatal, not just wasteful.
+- **The match ends.** A player who owns the whole board, or is the last boat afloat with
+  nowhere for the dead to respawn, wins and the sim freezes (`GameState.winnerId`).
+  "Roam forever banking tiny loops" no longer converges on a win.
+
+The current bot — see [the Rambler](#archetype-the-rambler-todays-bot-yellow-keeps-it)
+— copes but plateaus: it never consolidates a big region, never re-uses its own bridge,
+never hunts a trail, and wanders through contested water trailing an exposed wake that a
+human (or a future offensive bot) can cut for a landslide. We want a **small set of
+archetypes with explicit, different goals** so that:
+
+1. matches have texture (a farmer, a raider, a baseline roamer behave visibly differently);
+2. the capture-fill and split-resolution code gets exercised by more varied play than
+   one greedy scorer produces;
+3. the human has something to actually play against.
+
+### Design constraints the archetypes must respect
+
+Whatever the structure, keep the properties that make the current bot layer testable and
+cheap:
+
+- **One decision call per living bot per tick**, signature stays
+  `(state, player) => Direction`. No multi-tick planning that can't be re-derived from
+  the current `GameState`.
+- **Pure w.r.t. the sim.** A bot reads `GameState` and its own `PlayerState`; it must not
+  mutate either. `stepGame` writes the result into `player.queuedFacing`.
+- **Greedy one-cell lookahead is still the default.** An archetype may add a *cheap*
+  objective (a couple of scalars in scratch memory) but not a search.
+- **Profiles stay live-editable** from the panel, applied on the next tick, no restart.
+- **Deterministic apart from `Math.random()` and board state**, so unit tests can target
+  any new pure helpers directly (the way `src/test/` covers grid/capture/split today).
+- **Back-compatible.** `PlayerConfig` with no type behaves exactly as now; existing tests
+  and stored game records are untouched.
+
+### Approaches to supporting multiple bot types
+
+Three ways to let bots differ, roughly in order of increasing structure:
+
+| # | Approach | Shape | Pros | Cons |
+| --- | --- | --- | --- | --- |
+| 1 | **Type tag + `switch`** | `PlayerConfig.botType`; `decideBotFacing` branches on it, sharing the candidate-list / argmax skeleton. | Smallest diff. One file. | `decideBotFacing` grows without bound; per-type knobs and defaults get tangled; hard to test one archetype in isolation. |
+| 2 | **Strategy registry** *(recommended)* | `BOT_STRATEGIES: Record<BotType, BotStrategy>`; `decideBotFacing` becomes a 3-line dispatcher. Each strategy is its own module with its own `decide`, profile-field subset, and defaults. | Clean separation; each archetype unit-tested alone; per-archetype knob schema; adding one is additive. | A little ceremony up front (the interface + a registry file). |
+| 3 | **Goal stack / behaviour tree per bot** | Each bot holds an ordered list of goals (`SurviveGoal`, `ExtendGoal`, `CloseLoopGoal`…) evaluated each tick. | Maximum flexibility; composable. | Overkill for 3–4 archetypes; a scheduler and goal-arbitration layer to maintain; harder to reason about ties. |
+
+**Recommendation: approach 2.** Proposed interface:
+
+```ts
+// botStrategy.ts
+export type BotType = "rambler" | "surveyor"; // add "privateer", "blockader"… later
+
+export interface BotStrategy {
+  type: BotType;
+  label: string;                       // shown in the Profiles panel header
+  /** Pure. Same contract decideBotFacing has today. `memory` is this bot's scratch bag. */
+  decide(state: GameState, player: PlayerState, memory: BotMemory): Direction;
+  /** Which BotProfile fields this archetype actually reads — drives the panel sliders. */
+  fields: BotProfileField[];
+  defaultProfile: BotProfile;
+}
+
+export const BOT_STRATEGIES: Record<BotType, BotStrategy> = { rambler, surveyor };
+```
+
+`decideBotFacing` then collapses to:
+
+```ts
+function decideBotFacing(state: GameState, player: PlayerState): Direction {
+  const strategy = BOT_STRATEGIES[player.botType ?? "rambler"];
+  return strategy.decide(state, player, botMemoryFor(player));
+}
+```
+
+### Where per-bot planning state lives
+
+The Rambler is stateless — everything it needs (`trail.length`, `head`, `home`) is on
+`PlayerState` already. The Surveyor wants a scrap of memory ("am I extending or
+returning, and around which edge?"). Options:
+
+- **`PlayerState.botMemory?: BotMemory`** — a small typed bag, `{}` at spawn, cleared on
+  respawn in `respawnPlayer`. Serialises with the state; visible to tests. Preferred.
+- A module-level `WeakMap<PlayerState, BotMemory>` in the strategy layer — keeps the bag
+  out of the sim type, but `stepGame` clones `PlayerState` every tick (`{ ...p }`), so
+  the key identity is lost. Rejected for that reason.
+
+Keep `BotMemory` a discriminated union keyed by `BotType` so each strategy owns its
+shape and the others can ignore it.
+
+### Profile knobs across archetypes
+
+`BotProfile` today is a flat struct of seven numbers, all of which the Rambler reads.
+New archetypes need new knobs (`maxTrailExposure`, `frontierHugBonus`, …) but shouldn't
+show sliders they don't use.
+
+- **Short term:** keep `BotProfile` one flat superset; add the new fields with sane
+  defaults; let each `BotStrategy.fields` list the subset the panel renders for that
+  bot. `DEFAULT_BOT_PROFILE` stays the union so nothing goes `undefined`.
+- **If it gets unwieldy:** split into `{ core: {...}, rambler?: {...}, surveyor?: {...} }`.
+  Not worth it at two archetypes.
+
+### Archetype: the Rambler (today's bot; Yellow keeps it)
+
+| | |
+| --- | --- |
+| **Goal** | Never sit still. Keep a wake out; bank a small loop whenever one is cheap to close. |
+| **Mechanism** | The two-phase greedy scorer documented above — [explore](#behavioural-phases) (jittered wander toward neutral water, faint pull home) until `trail.length >= homesickTrailLength`, then [homesick](#behavioural-phases) (Manhattan beeline home, `closeLoopReward` for stepping back onto own territory). |
+| **Emergent play** | A cloud of small, frequent captures hugging its start corner. Paths differ run-to-run from `jitter`. |
+| **Strengths** | Cheap, robust, never deadlocks (the homesick beeline is a guaranteed-progress recovery). Good **control/baseline** to measure other archetypes against, and a fair warm-up opponent for the human. |
+| **Weaknesses under the new rules** | No consolidation (never encloses a big pocket). No offence — walks past cuttable trails. No defence — trails an exposed wake through contested water. Never exploits its own bridges. Tends to *plateau* in cell count rather than push toward a board win. |
+| **Assignment** | **Yellow Bot only**, going forward. `botType: "rambler"`, and the default when `botType` is omitted, so every existing `PlayerConfig` and test keeps its current behaviour. |
+
+### Archetype: the Surveyor (the planned gradual-looping bot; Red & Green)
+
+The "concentrate on building safe loops to gradually expand their territory" bot.
+
+| | |
+| --- | --- |
+| **Goal** | Grow **one contiguous blob** outward from home by repeatedly closing the *largest loop it can safely close right now*, keeping its wake short and close to owned land so it's rarely cuttable. |
+| **Core idea** | Distance is measured to the **nearest owned cell**, not to `home`. The bot hugs the frontier of its own territory one cell out, sweeps a strip, then folds it in. Bigger, chunkier captures than the Rambler; much less exposure. |
+
+**Sketched decision procedure** — still greedy one-cell lookahead, plus a two-value
+objective in `botMemory`:
+
+1. **Objective:** `memory = { phase: "extend" | "return", hugSide: Direction }`.
+   `hugSide` is which way owned land lies relative to the current sweep, so the bot
+   knows which way to curl to enclose area rather than draw a tendril.
+2. **Exposure guard (hard):** score a move `offBoardPenalty`-low if the resulting head
+   would be more than `maxTrailExposure` cells from the nearest owned cell, or if it
+   steps adjacent to a rival head. (The Rambler ignores both.)
+3. **Frontier hug (soft):** `frontierHugBonus` when the move keeps the head exactly one
+   cell outside own territory — this makes the eventual loop enclose a thick strip.
+4. **Area bias (soft):** small bonus for turning toward `hugSide` on the outbound leg so
+   the enclosed region stays chunky, not a thin finger.
+5. **Close trigger:** switch to `"return"` when `trail.length >= targetTrailLength`
+   **or** a rival head comes within `rivalAvoidRadius`. In `"return"`, reuse the
+   Rambler's homesick beeline verbatim (shortest Manhattan path back onto own colour).
+6. **Deadlock fallback:** if `trail.length` exceeds a hard cap (say `2 * targetTrailLength`)
+   without closing — boxed in, frontier unreachable — drop to a plain homesick beeline
+   so the bot can never freeze. This is the Surveyor degrading to Rambler behaviour, not
+   a separate code path.
+
+**New pure helpers needed** (each independently unit-testable, like the existing
+grid/split helpers):
+
+- `nearestOwnedDistance(grid, playerId, cell)` — BFS/Manhattan field to closest own
+  territory. Can be approximated per-tick from a cheap flood if a full field is too
+  much.
+- `isFrontierAdjacent(grid, playerId, cell)` — is `cell` neutral and 4-adjacent to own
+  territory?
+- `estimateEnclosedArea(...)` — a *rough* count for the close decision only. The real
+  fill is still `resolveCapture`; the bot just needs "is this loop worth closing".
+
+**New knobs** (added to the flat `BotProfile`, shown only on Surveyor cards):
+
+| Field | Rough default | Effect |
+| --- | --- | --- |
+| `maxTrailExposure` | `4` | Hard cap on how far the head may get from owned land while extending. Lower → safer, slower growth. |
+| `targetTrailLength` | `14` | Wake length that triggers the return leg. Higher → bigger loops, more risk. |
+| `frontierHugBonus` | `3` | Pull toward staying one cell outside own territory. |
+| `rivalAvoidRadius` | `3` | Bail to the return leg if a rival head gets this close. |
+
+**Failure modes to watch:** oscillating between `extend`/`return` on the boundary
+(hysteresis: only flip `phase` when the trigger is clearly met); never closing because
+the area threshold can't be reached (the deadlock fallback in step 6); curling the wrong
+way and self-boxing (`hugSide` must be recomputed if the frontier direction changes).
+
+**Assignment:** **Red Bot** and **Green Bot** → `botType: "surveyor"`. Yellow stays
+Rambler, so a default match is "one roamer vs. two farmers vs. the human".
+
+### Rollout plan
+
+1. **This doc** — agree the archetype list and the `BotStrategy` interface.
+2. **Registry refactor, behaviour-neutral.** Add `BotType`, `BOT_STRATEGIES`, the
+   `botMemory` bag, and the `decideBotFacing` dispatcher; register only `rambler`, whose
+   `decide` is the current function moved verbatim. All existing unit + e2e tests stay
+   green with no edits. Add `botType?: BotType` to `PlayerConfig` (optional, defaults
+   `"rambler"`).
+3. **Implement `surveyor`.** New strategy module + the three pure helpers with their own
+   test file; extend `BotProfile` with the four knobs; wire `PLAYER_CONFIGS` so Red and
+   Green get `botType: "surveyor"`; tune defaults live in the panel. Update
+   [The three bots](#the-three-bots) and the [Behavioural phases](#behavioural-phases) /
+   [Tuning knobs](#tuning-knobs) tables here.
+4. **Panel support.** Profiles panel shows the archetype name per card and renders only
+   that archetype's `fields`. Optional: a per-bot archetype dropdown so a match can be
+   set to 3× Surveyor, etc.
+5. **Later archetypes** (below), once the registry has proven out.
+
+**Game records:** `LandGrabPlayerRecord` could gain `botType` (schema bump to `2`, old
+rows still load and just lack the field). Defer until step 3 actually ships something
+worth recording.
+
+### Later archetypes (sketch)
+
+Not planned for this pass — listed so the registry interface is designed with room for
+them.
+
+| Archetype | Goal | One-line mechanism | Exercises |
+| --- | --- | --- | --- |
+| **Privateer** | Offence. Win by cutting, not enclosing. | Score toward the nearest rival wake; intercept its projected next cell; only loop home when no cut is reachable. | Trail-cut capture + bridge, third-party split resolution. |
+| **Blockader** | Defence / denial. | Hug and wall off a choke so rivals can't expand past it; tiny loops, never far from home. | Long thin territory strips, split resolution when a strip is cut. |
+| **Opportunist** | Meta. | Run Surveyor, but switch to Privateer scoring for a few ticks whenever a rival wake is short-and-close. | Strategy switching, `botMemory` phase changes. |
 
 ## Tuning them live in the demo
 
