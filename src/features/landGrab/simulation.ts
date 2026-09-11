@@ -431,8 +431,12 @@ export function stepGame(state: GameState): GameState {
   // capture loop is finished: they're still afloat but hold zero ground, so
   // there's nothing left to close a loop onto. Sink them the same way a
   // trail-cut victim is sunk, and clear their now-orphaned wake off the board.
+  // This applies even to a player who hasn't moved since spawning/respawning
+  // (`hasStarted` false) — a human who gets boxed in before their first key
+  // press is just as stuck as one who was mid-trail, and needs the same
+  // respawn cycle rather than being left alive with no land to ever reclaim.
   for (const player of Object.values(players)) {
-    if (!player.alive || !player.hasStarted || player.ownedCount > 0) continue;
+    if (!player.alive || player.ownedCount > 0) continue;
     player.alive = false;
     player.trail = [];
     player.queuedFacing = null;
