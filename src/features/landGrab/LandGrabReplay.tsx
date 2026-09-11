@@ -76,28 +76,44 @@ export interface LandGrabReplayProps {
   log: ReplayLog;
   /** Pixel size of one cell; defaults to a fit that keeps the board ~520px wide. */
   cellSize?: number;
+  /** Start at frame 0 and play immediately, rather than resting on the last frame. */
+  autoPlay?: boolean;
+  /** Fired once when playback reaches the final frame (only while actually playing). */
+  onEnded?: () => void;
   onClose?: () => void;
+  /** Overrides the default card wrapper — pass `""` to drop it (e.g. inside a modal). */
+  className?: string;
 }
 
 /**
  * Scrub / play back a recorded match. Pure viewer over a `ReplayLog` — it never
  * touches the live simulation, so it's safe to mount while a fresh match runs.
  */
-export function LandGrabReplay({ log, cellSize, onClose }: LandGrabReplayProps) {
+export function LandGrabReplay({
+  log,
+  cellSize,
+  autoPlay,
+  onEnded,
+  onClose,
+  className,
+}: LandGrabReplayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameCount = log.frames.length;
 
-  const [index, setIndex] = useState(frameCount - 1);
-  const [playing, setPlaying] = useState(false);
+  const [index, setIndex] = useState(autoPlay ? 0 : frameCount - 1);
+  const [playing, setPlaying] = useState(!!autoPlay);
   const [speed, setSpeed] = useState(2);
+  // Fires `onEnded` at most once per log.
+  const endedRef = useRef(false);
 
   const cell = cellSize ?? Math.max(6, Math.min(22, Math.floor(520 / Math.max(1, log.colCount))));
 
-  // A new log (next finished match) jumps the scrubber to its end.
+  // A new log (next finished match) resets playback per `autoPlay`.
   useEffect(() => {
-    setIndex(log.frames.length - 1);
-    setPlaying(false);
-  }, [log]);
+    setIndex(autoPlay ? 0 : log.frames.length - 1);
+    setPlaying(!!autoPlay);
+    endedRef.current = false;
+  }, [log, autoPlay]);
 
   useEffect(() => {
     if (canvasRef.current) drawFrame(canvasRef.current, log, index, cell);
@@ -106,18 +122,22 @@ export function LandGrabReplay({ log, cellSize, onClose }: LandGrabReplayProps) 
   useEffect(() => {
     if (!playing) return;
     const timer = window.setInterval(() => {
-      setIndex((i) => {
-        if (i >= frameCount - 1) {
-          setPlaying(false);
-          return i;
-        }
-        return i + 1;
-      });
+      setIndex((i) => Math.min(i + 1, frameCount - 1));
     }, TICK_MS / speed);
     return () => window.clearInterval(timer);
   }, [playing, speed, frameCount]);
 
   const clampedIndex = Math.max(0, Math.min(index, frameCount - 1));
+
+  // Stop at the end, and announce it once.
+  useEffect(() => {
+    if (!playing || clampedIndex < frameCount - 1) return;
+    setPlaying(false);
+    if (!endedRef.current) {
+      endedRef.current = true;
+      onEnded?.();
+    }
+  }, [playing, clampedIndex, frameCount, onEnded]);
   const frame = log.frames[clampedIndex];
   const width = log.colCount * cell;
   const height = log.rowCount * cell;
@@ -128,7 +148,10 @@ export function LandGrabReplay({ log, cellSize, onClose }: LandGrabReplayProps) 
   };
 
   return (
-    <div className="rounded-lg border border-border bg-card/40 p-4" data-testid="landgrab-replay">
+    <div
+      className={className ?? "rounded-lg border border-border bg-card/40 p-4"}
+      data-testid="landgrab-replay"
+    >
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-3">
         <h3 className="text-sm font-semibold text-foreground">Replay</h3>
         <p className="text-xs text-muted-foreground">

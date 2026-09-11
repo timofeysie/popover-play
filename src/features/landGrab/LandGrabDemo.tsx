@@ -30,6 +30,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { buttonVariants } from "@/components/ui/button";
 
 const CELL_SIZE = 22;
 const DEFAULT_DIMS = { rows: 16, cols: 24, cell: CELL_SIZE };
@@ -253,6 +254,10 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   const [showProfiles, setShowProfiles] = useState(false);
   const [showRecords, setShowRecords] = useState(false);
   const [showReplay, setShowReplay] = useState(false);
+  // The game-over modal is showing the replay in place of the stats.
+  const [replayInModal, setReplayInModal] = useState(false);
+  // The in-modal replay has finished playing — show the "wins!" announcement.
+  const [replayEnded, setReplayEnded] = useState(false);
   const [profiles, setProfiles] = useState<Record<string, BotProfile>>(makeInitialProfiles);
   const [autopilot, setAutopilot] = useState<Record<string, boolean>>(makeInitialAutopilot);
   const [botTypes, setBotTypes] = useState<Record<string, BotType>>(makeInitialBotTypes);
@@ -299,6 +304,13 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   hideControlsRef.current = hideControls;
 
   const restart = () => setRestartToken((n) => n + 1);
+
+  /** Dismiss the game-over modal and reset its replay sub-state. */
+  const closeGameOver = () => {
+    setGameOver(null);
+    setReplayInModal(false);
+    setReplayEnded(false);
+  };
 
   const leaderboard = Object.values(players).sort((a, b) => b.ownedCount - a.ownedCount);
 
@@ -363,15 +375,29 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   }, [fullScreen]);
 
   // Windowed mode: auto-dismiss the result modal and start a fresh match after 5s.
-  // Full screen keeps the modal up so the final board stays on screen until dismissed.
+  // Full screen keeps the modal up so the final board stays on screen until
+  // dismissed. Suspended while the user is watching the in-modal replay — the
+  // post-replay timer below takes over once it ends.
   useEffect(() => {
-    if (hideControls || fullScreen || gameOver === null) return;
+    if (hideControls || fullScreen || gameOver === null || replayInModal) return;
     const timer = window.setTimeout(() => {
-      setGameOver(null);
+      closeGameOver();
       restart();
     }, 5000);
     return () => window.clearTimeout(timer);
-  }, [gameOver, fullScreen, hideControls]);
+  }, [gameOver, fullScreen, hideControls, replayInModal]);
+
+  // After the in-modal replay finishes: windowed mode announces the winner for
+  // 5s then starts a fresh match; full screen leaves the modal up until the user
+  // closes it.
+  useEffect(() => {
+    if (hideControls || fullScreen || !replayInModal || !replayEnded) return;
+    const timer = window.setTimeout(() => {
+      closeGameOver();
+      restart();
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [replayInModal, replayEnded, fullScreen, hideControls]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -381,6 +407,8 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
     setTick(0);
     setGameOver(null);
     setShowReplay(false);
+    setReplayInModal(false);
+    setReplayEnded(false);
     replayLogRef.current = hideControlsRef.current
       ? null
       : createReplayLog(stateHolderRef.current.current);
@@ -592,8 +620,11 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
         />
       )}
       {!hideControls && (
-        <AlertDialog open={gameOver !== null} onOpenChange={(open) => !open && setGameOver(null)}>
-          <AlertDialogContent data-testid="landgrab-gameover">
+        <AlertDialog open={gameOver !== null} onOpenChange={(open) => !open && closeGameOver()}>
+          <AlertDialogContent
+            data-testid="landgrab-gameover"
+            className={replayInModal ? "sm:max-w-2xl" : undefined}
+          >
             <AlertDialogHeader>
               <AlertDialogTitle className="flex items-center gap-2">
                 <span
@@ -602,55 +633,81 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
                 />
                 {gameOver?.winner.label} wins
               </AlertDialogTitle>
-              <AlertDialogDescription asChild>
-                <div className="space-y-3">
-                  <p>
-                    {gameOver && gameOver.winner.ownedCount >= gameOver.board.totalCells
-                      ? `${gameOver.winner.label} captured the entire board.`
-                      : `${gameOver?.winner.label} was the last boat afloat with nowhere left for the others to respawn.`}
-                  </p>
-                  {gameOver && (
-                    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                      <dt className="text-muted-foreground">Ticks</dt>
-                      <dd className="tabular-nums text-foreground">{gameOver.ticks}</dd>
-                      <dt className="text-muted-foreground">Match time</dt>
-                      <dd className="tabular-nums text-foreground">{formatDuration(gameOver.durationMs)}</dd>
-                      <dt className="text-muted-foreground">Board</dt>
-                      <dd className="tabular-nums text-foreground">
-                        {gameOver.board.cols}×{gameOver.board.rows} · {gameOver.board.totalCells} cells
-                      </dd>
-                      <dt className="text-muted-foreground">Winner cells</dt>
-                      <dd className="tabular-nums text-foreground">
-                        {gameOver.winner.ownedCount} ({Math.round(gameOver.winner.ownedFraction * 100)}%)
-                      </dd>
-                      <dt className="text-muted-foreground">Winner peak</dt>
-                      <dd className="tabular-nums text-foreground">
-                        {gameOver.winner.peakOwnedCount} ({Math.round(gameOver.winner.peakOwnedFraction * 100)}%)
-                      </dd>
-                      <dt className="text-muted-foreground">Winner captures</dt>
-                      <dd className="tabular-nums text-foreground">{gameOver.winner.captures}</dd>
-                      <dt className="text-muted-foreground">Winner sunk</dt>
-                      <dd className="tabular-nums text-foreground">{gameOver.winner.timesCaptured}×</dd>
-                    </dl>
-                  )}
-                  <p className="text-xs text-muted-foreground">
+              <AlertDialogDescription>
+                {replayInModal
+                  ? "Replaying the match from the first tick."
+                  : gameOver && gameOver.winner.ownedCount >= gameOver.board.totalCells
+                    ? `${gameOver.winner.label} captured the entire board.`
+                    : `${gameOver?.winner.label} was the last boat afloat with nowhere left for the others to respawn.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+
+            {replayInModal ? (
+              <div className="space-y-3">
+                {replay && (
+                  <LandGrabReplay
+                    log={replay}
+                    autoPlay
+                    onEnded={() => setReplayEnded(true)}
+                    className=""
+                  />
+                )}
+                {replayEnded && (
+                  <div className="text-center space-y-1">
+                    <p className="text-lg font-semibold text-foreground">
+                      🏆 {gameOver?.winner.label} wins!
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {fullScreen ? "Close when you're ready." : "Starting a new game…"}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              gameOver && (
+                <div className="space-y-3 text-sm text-muted-foreground">
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
+                    <dt>Ticks</dt>
+                    <dd className="tabular-nums text-foreground">{gameOver.ticks}</dd>
+                    <dt>Match time</dt>
+                    <dd className="tabular-nums text-foreground">{formatDuration(gameOver.durationMs)}</dd>
+                    <dt>Board</dt>
+                    <dd className="tabular-nums text-foreground">
+                      {gameOver.board.cols}×{gameOver.board.rows} · {gameOver.board.totalCells} cells
+                    </dd>
+                    <dt>Winner cells</dt>
+                    <dd className="tabular-nums text-foreground">
+                      {gameOver.winner.ownedCount} ({Math.round(gameOver.winner.ownedFraction * 100)}%)
+                    </dd>
+                    <dt>Winner peak</dt>
+                    <dd className="tabular-nums text-foreground">
+                      {gameOver.winner.peakOwnedCount} ({Math.round(gameOver.winner.peakOwnedFraction * 100)}%)
+                    </dd>
+                    <dt>Winner captures</dt>
+                    <dd className="tabular-nums text-foreground">{gameOver.winner.captures}</dd>
+                    <dt>Winner sunk</dt>
+                    <dd className="tabular-nums text-foreground">{gameOver.winner.timesCaptured}×</dd>
+                  </dl>
+                  <p className="text-xs">
                     Saved to this browser as a game record (<code>landgrab:game-records</code>).
                   </p>
                 </div>
-              </AlertDialogDescription>
-            </AlertDialogHeader>
+              )
+            )}
+
             <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setGameOver(null)}>Dismiss</AlertDialogCancel>
-              {replay && (
-                <AlertDialogAction
+              <AlertDialogCancel onClick={closeGameOver}>Dismiss</AlertDialogCancel>
+              {!replayInModal && replay && (
+                <button
+                  type="button"
                   onClick={() => {
-                    setGameOver(null);
-                    setShowReplay(true);
+                    setReplayEnded(false);
+                    setReplayInModal(true);
                   }}
-                  className="bg-secondary text-secondary-foreground hover:bg-secondary/90"
+                  className={`${buttonVariants({ variant: "secondary" })} mt-2 sm:mt-0`}
                 >
                   Watch replay
-                </AlertDialogAction>
+                </button>
               )}
               <AlertDialogAction onClick={restart}>Play again</AlertDialogAction>
             </AlertDialogFooter>

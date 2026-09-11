@@ -113,10 +113,29 @@ it's safe to mount while a fresh match runs.
 - **Per-player row** — colour dot, label, `ownedCount`, and the current
   `facing` (or `sunk`) at the shown frame — the debugging payload. A note under
   it names the winner on the frame the match is decided.
+- Props: `autoPlay` starts at frame 0 already playing; `onEnded` fires once when
+  playback reaches the last frame (only while actually playing); `className`
+  overrides the card wrapper (pass `""` to drop it inside a modal).
 
-It is reachable two ways: the "Replay" toggle in the controls row (disabled until
-a match has finished) and the "Watch replay" action in the game-over dialog
-(which also cancels the windowed-mode 5-second auto-restart).
+### Two entry points
+
+**Controls row → "Replay"** — toggles an inline `LandGrabReplay` panel below the
+board, resting on the final frame, paused. Disabled until a match has finished.
+Stays available after the game-over modal is gone, so you can re-watch the last
+match while a new one runs.
+
+**Game-over modal → "Watch replay"** — expands the modal (`sm:max-w-2xl`) and
+swaps the stats block for a `LandGrabReplay` with `autoPlay`, so it plays through
+from the first tick. When it ends (`onEnded` → `replayEnded`) the modal shows a
+**"🏆 X wins!"** banner, then:
+
+- **windowed** — closes the modal and starts a fresh match 5s later, same as the
+  plain stats view.
+- **full screen** — stays open until the user hits **Dismiss** or **Play again**.
+
+Clicking "Watch replay" suspends the windowed stats auto-restart timer; the
+post-replay timer above takes over once playback finishes. "Play again" and
+"Dismiss" work at any point, including mid-replay.
 
 ## Later: true algorithm re-execution
 
