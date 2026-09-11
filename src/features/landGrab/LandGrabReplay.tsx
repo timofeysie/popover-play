@@ -151,17 +151,23 @@ export function LandGrabReplay({
 
   const clampedIndex = Math.max(0, Math.min(index, frameCount - 1));
 
-  // Stop at the end, hold on the final frame for a beat so it actually reads,
-  // then announce it once. Scrubbing/stepping away during the hold cancels the
-  // pending announcement (the effect cleanup clears the timer).
+  // Stop advancing once playback reaches the end. Split from the hold/announce
+  // effect below: this one flips `playing`, so it must not also own the hold
+  // timer — a single effect that both set `playing` and started the timeout
+  // would re-run on its own `playing` change and cancel the timeout it just set.
   useEffect(() => {
-    if (!playing || clampedIndex < frameCount - 1) return;
-    setPlaying(false);
-    if (endedRef.current) return;
+    if (playing && clampedIndex >= frameCount - 1) setPlaying(false);
+  }, [playing, clampedIndex, frameCount]);
+
+  // Hold on the final frame for a beat so it actually reads, then announce it
+  // once. Scrubbing/stepping away during the hold cancels the pending
+  // announcement (the effect cleanup clears the timer).
+  useEffect(() => {
+    if (clampedIndex < frameCount - 1 || endedRef.current) return;
     endedRef.current = true;
     const timer = window.setTimeout(() => onEnded?.(), END_HOLD_MS);
     return () => window.clearTimeout(timer);
-  }, [playing, clampedIndex, frameCount, onEnded]);
+  }, [clampedIndex, frameCount, onEnded]);
   const frame = log.frames[clampedIndex];
   const width = log.colCount * cell;
   const height = log.rowCount * cell;

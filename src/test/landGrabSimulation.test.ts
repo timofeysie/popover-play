@@ -5,9 +5,13 @@ import type { Direction } from "@/features/landGrab/types";
 
 const HUMAN: PlayerConfig = { id: "p1", label: "You", color: 0x38bdf8, isBot: false };
 
+// Home spots are randomized in production; pin the "random" pick to its lowest
+// value so these tests get the same deterministic home every run.
+const ZERO_RNG = () => 0;
+
 describe("createInitialGameState", () => {
   it("places a 3x3 base per player and counts it", () => {
-    const state = createInitialGameState(7, 7, [HUMAN]);
+    const state = createInitialGameState(7, 7, [HUMAN], undefined, ZERO_RNG);
     expect(state.players.p1.ownedCount).toBe(9);
     expect(state.players.p1.home).toEqual({ row: 2, col: 2 });
     expect(state.players.p1.alive).toBe(true);
@@ -23,7 +27,7 @@ describe("createInitialGameState", () => {
 
 describe("stepGame — a full capture loop", () => {
   it("walking a loop back into home territory converts the trail plus the enclosed pocket", () => {
-    let state = createInitialGameState(7, 7, [HUMAN]);
+    let state = createInitialGameState(7, 7, [HUMAN], undefined, ZERO_RNG);
     expect(state.players.p1.ownedCount).toBe(9);
 
     // From home (2,2): exit the base, trace a loop that pinches off a 2-cell
@@ -44,7 +48,7 @@ describe("stepGame — a full capture loop", () => {
   });
 
   it("running through your own trail passes straight through — the loop only closes on your territory", () => {
-    let state = createInitialGameState(7, 7, [HUMAN]);
+    let state = createInitialGameState(7, 7, [HUMAN], undefined, ZERO_RNG);
     // Home base is rows 1-3 / cols 1-3. Trace a trail out of it and back over
     // the earlier trail cell at (2,4).
     const path: Direction[] = ["right", "right", "right", "up", "up", "left", "down", "down"];
@@ -71,7 +75,7 @@ describe("stepGame — a full capture loop", () => {
   });
 
   it("walking into the board edge holds the player still instead of eliminating them", () => {
-    let state = createInitialGameState(5, 5, [HUMAN]);
+    let state = createInitialGameState(5, 5, [HUMAN], undefined, ZERO_RNG);
     // Home lands at (2,2) on a 5x5 board; two steps up reaches the top row (0,2).
     for (let i = 0; i < 5; i++) {
       setPlayerFacing(state, "p1", "up");
@@ -100,7 +104,7 @@ describe("stepGame — human start gate", () => {
   });
 
   it("starts moving as soon as a direction is set", () => {
-    let state = createInitialGameState(7, 7, [HUMAN]);
+    let state = createInitialGameState(7, 7, [HUMAN], undefined, ZERO_RNG);
     setPlayerFacing(state, "p1", "right");
     state = stepGame(state);
     expect(state.players.p1.head).toEqual({ row: 2, col: 3 });

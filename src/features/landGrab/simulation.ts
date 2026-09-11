@@ -92,17 +92,16 @@ export interface GameState {
   captureEvents: CaptureEvent[];
 }
 
-/** Evenly spread starting corners for up to 4 players; anything past that falls back to a scanned spawn. */
-function startingSpots(rowCount: number, colCount: number, count: number): Vec2[] {
+/** A random spot to try for a fresh base, kept off the very edge of the board. */
+function randomSpawnCandidate(rowCount: number, colCount: number, rng: () => number): Vec2 {
   const marginRow = Math.max(BASE_RADIUS + 1, Math.floor(rowCount / 5));
   const marginCol = Math.max(BASE_RADIUS + 1, Math.floor(colCount / 5));
-  const corners: Vec2[] = [
-    { row: marginRow, col: marginCol },
-    { row: rowCount - 1 - marginRow, col: colCount - 1 - marginCol },
-    { row: marginRow, col: colCount - 1 - marginCol },
-    { row: rowCount - 1 - marginRow, col: marginCol },
-  ];
-  return corners.slice(0, count);
+  const rowSpan = Math.max(1, rowCount - 2 * marginRow);
+  const colSpan = Math.max(1, colCount - 2 * marginCol);
+  return {
+    row: marginRow + Math.floor(rng() * rowSpan),
+    col: marginCol + Math.floor(rng() * colSpan),
+  };
 }
 
 export function createInitialGameState(
@@ -110,14 +109,17 @@ export function createInitialGameState(
   colCount: number,
   configs: PlayerConfig[],
   rules?: Partial<GameRules>,
+  /** Source of randomness for starting spots; injected so tests can get deterministic homes. */
+  rng: () => number = Math.random,
 ): GameState {
   let grid = createEmptyGrid(rowCount, colCount);
-  const spots = startingSpots(rowCount, colCount, configs.length);
   const players: Record<string, PlayerState> = {};
   const playerOrder = configs.map((c) => c.id);
 
-  configs.forEach((config, index) => {
-    const home = spots[index] ?? findOpenSpawn(grid, { row: Math.floor(rowCount / 2), col: Math.floor(colCount / 2) });
+  configs.forEach((config) => {
+    // Each player/bot gets a random spot, scanned outward if it collides with
+    // an already-placed base — never the same static layout every game.
+    const home = findOpenSpawn(grid, randomSpawnCandidate(rowCount, colCount, rng), BASE_RADIUS);
     grid = placeBase(grid, home, config.id, BASE_RADIUS);
     const autopilot = config.autopilot ?? false;
     const botType = config.botType ?? DEFAULT_BOT_TYPE;
