@@ -31,10 +31,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { buttonVariants } from "@/components/ui/button";
+import type { Vec2 } from "./types";
 
 const CELL_SIZE = 22;
 const DEFAULT_DIMS = { rows: 16, cols: 24, cell: CELL_SIZE };
 const SPEED_OPTIONS = [0.25, 0.5, 1, 2, 4];
+/** Cells between each trailing chain segment, like the gap between links in a snake body. */
+const CHAIN_LINK_SPACING = 2;
 
 interface GridDims {
   rows: number;
@@ -120,6 +123,9 @@ class LandGrabScene extends Phaser.Scene {
   private cellSize = CELL_SIZE;
   private graphics!: Phaser.GameObjects.Graphics;
   private headMarkers: Phaser.GameObjects.Arc[] = [];
+  private chainMarkers: Phaser.GameObjects.Arc[] = [];
+  /** Recent head positions per player, used to lay the trailing chain out like a snake body. Reset on death. */
+  private headHistory: Record<string, Vec2[]> = {};
 
   constructor() {
     super("land-grab");
@@ -213,6 +219,41 @@ class LandGrabScene extends Phaser.Scene {
     }
     for (let row = 0; row <= state.rowCount; row++) {
       g.lineBetween(0, row * cell, width, row * cell);
+    }
+
+    // Track each player's recent head positions so a captured-avatar chain has
+    // somewhere to sit behind the head, like a snake body. Dead players restart
+    // the trail from wherever they respawn.
+    for (const player of Object.values(state.players)) {
+      const history = this.headHistory[player.id] ?? (this.headHistory[player.id] = []);
+      if (!player.alive) {
+        history.length = 0;
+        continue;
+      }
+      const last = history[history.length - 1];
+      if (!last || last.row !== player.head.row || last.col !== player.head.col) {
+        history.push({ row: player.head.row, col: player.head.col });
+      }
+      const maxLen = player.chain.length * CHAIN_LINK_SPACING + 1;
+      if (history.length > maxLen) history.splice(0, history.length - maxLen);
+    }
+
+    for (const marker of this.chainMarkers) marker.destroy();
+    this.chainMarkers = [];
+    for (const player of Object.values(state.players)) {
+      if (!player.alive || player.chain.length === 0) continue;
+      const history = this.headHistory[player.id] ?? [];
+      for (let i = 0; i < player.chain.length; i++) {
+        const stepsBack = (i + 1) * CHAIN_LINK_SPACING;
+        const pos = history[Math.max(0, history.length - 1 - stepsBack)];
+        if (!pos) continue;
+        const cx = pos.col * cell + cell / 2;
+        const cy = pos.row * cell + cell / 2;
+        const capturedColor = state.players[player.chain[i]]?.color ?? player.color;
+        const marker = this.add.circle(cx, cy, cell * 0.22, capturedColor, 0.85);
+        marker.setStrokeStyle(1.5, 0xffffff, 0.6);
+        this.chainMarkers.push(marker);
+      }
     }
 
     for (const marker of this.headMarkers) marker.destroy();
