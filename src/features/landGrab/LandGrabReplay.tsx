@@ -40,22 +40,9 @@ function drawFrame(canvas: HTMLCanvasElement, log: ReplayLog, index: number, cel
       if (state.kind === "neutral") continue;
       const color = log.playerMeta[state.playerId]?.color ?? 0xffffff;
       ctx.fillStyle = rgba(color, state.kind === "territory" ? 0.9 : 0.4);
-      ctx.fillRect(col * cell + 1, row * cell + 1, cell - 2, cell - 2);
+      ctx.fillRect(col * cell, row * cell, cell, cell);
     }
   }
-
-  ctx.strokeStyle = "rgba(30, 41, 59, 0.6)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let col = 0; col <= log.colCount; col++) {
-    ctx.moveTo(col * cell, 0);
-    ctx.lineTo(col * cell, height);
-  }
-  for (let row = 0; row <= log.rowCount; row++) {
-    ctx.moveTo(0, row * cell);
-    ctx.lineTo(width, row * cell);
-  }
-  ctx.stroke();
 
   // Display-only: the trailing chain of previously-captured avatars, replayed
   // the same way the live game builds it — see `chainTrail.ts`.
