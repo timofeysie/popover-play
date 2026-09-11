@@ -32,15 +32,18 @@ export function resolveCapture(grid: CellState[][], playerId: string): CellState
   const colCount = grid[0]?.length ?? 0;
   const reachable: boolean[][] = Array.from({ length: rowCount }, () => new Array(colCount).fill(false));
 
-  function floodFromBorder(row: number, col: number): void {
-    // Base case: off the grid, already visited, or the closing player's own boundary
-    if (row < 0 || row >= rowCount || col < 0 || col >= colCount) return;
-    if (reachable[row][col] || isPlayerBoundary(grid[row][col], playerId)) return;
-    reachable[row][col] = true;
-    floodFromBorder(row - 1, col);
-    floodFromBorder(row + 1, col);
-    floodFromBorder(row, col - 1);
-    floodFromBorder(row, col + 1);
+  // Iterative (explicit stack) so a large board's open water doesn't blow the JS call stack —
+  // this can visit tens of thousands of cells on the "large map" board size.
+  function floodFromBorder(startRow: number, startCol: number): void {
+    const stack: Array<[number, number]> = [[startRow, startCol]];
+    while (stack.length > 0) {
+      const [row, col] = stack.pop()!;
+      // Skip: off the grid, already visited, or the closing player's own boundary
+      if (row < 0 || row >= rowCount || col < 0 || col >= colCount) continue;
+      if (reachable[row][col] || isPlayerBoundary(grid[row][col], playerId)) continue;
+      reachable[row][col] = true;
+      stack.push([row - 1, col], [row + 1, col], [row, col - 1], [row, col + 1]);
+    }
   }
 
   for (let col = 0; col < colCount; col++) {

@@ -41,11 +41,23 @@ const SPEED_OPTIONS = [0.25, 0.5, 1, 2, 4];
 /** How many of the final ticks the auto-played, game-over highlight replay covers. */
 const INTRO_REPLAY_TICKS = 10;
 
+/** How many times bigger the "large map" world is than the player's viewport, in each dimension. */
+const LARGE_MAP_SCALE = 3;
+const LARGE_MAP_MAX_COLS = 180;
+const LARGE_MAP_MAX_ROWS = 120;
+/** Longest edge of the lower-left overview map, in screen pixels. */
+const MINIMAP_MAX_SIZE = 140;
+const MINIMAP_MARGIN = 12;
+/** Fixed on-screen radius for player/bot dots on the minimap, regardless of world size. */
+const MINIMAP_MARKER_SCREEN_RADIUS = 4;
+
 interface GridDims {
   rows: number;
   cols: number;
   cell: number;
 }
+
+type BoardMode = "demo" | "fullscreen" | "large";
 
 /** Grow the board to fill the browser window while keeping the cell size constant. */
 function computeFullScreenDims(): GridDims {
@@ -60,6 +72,24 @@ function computeFullScreenDims(): GridDims {
     cell,
     cols: Math.max(DEFAULT_DIMS.cols, Math.floor(availWidth / cell)),
     rows: Math.max(DEFAULT_DIMS.rows, Math.floor(availHeight / cell)),
+  };
+}
+
+/**
+ * A world several times bigger than the on-screen viewport, so the game plays like a
+ * paper.io-style sliding window: the Phaser canvas stays viewport-sized and its camera
+ * scrolls to follow the human player around the larger board.
+ */
+function computeLargeMapDims(): { world: GridDims; viewportCols: number; viewportRows: number } {
+  const viewport = computeFullScreenDims();
+  return {
+    world: {
+      cell: CELL_SIZE,
+      cols: Math.min(LARGE_MAP_MAX_COLS, viewport.cols * LARGE_MAP_SCALE),
+      rows: Math.min(LARGE_MAP_MAX_ROWS, viewport.rows * LARGE_MAP_SCALE),
+    },
+    viewportCols: viewport.cols,
+    viewportRows: viewport.rows,
   };
 }
 
@@ -118,6 +148,8 @@ interface SceneData {
   /** `chainPeaks` is each player's high-water mark for the display-only captured-avatar chain so far this match. */
   onTick: (state: GameState, chainPeaks: Record<string, number>) => void;
   cellSize: number;
+  /** "Large map" mode: the board is bigger than the canvas, so the camera follows the human and a minimap is drawn. */
+  isLargeMap: boolean;
 }
 
 class LandGrabScene extends Phaser.Scene {
@@ -130,11 +162,18 @@ class LandGrabScene extends Phaser.Scene {
   private avatarRef!: SceneData["avatarRef"];
   private onTick!: SceneData["onTick"];
   private cellSize = CELL_SIZE;
+  private isLargeMap = false;
   private graphics!: Phaser.GameObjects.Graphics;
   private headMarkers: Phaser.GameObjects.GameObject[] = [];
   /** Serialized form of the avatar grid last baked into `AVATAR_TEXTURE_KEY`, so a same-avatar tick skips regenerating it. */
   private bakedAvatarSignature: string | null = null;
   private chainMarkers: Phaser.GameObjects.Arc[] = [];
+  /** The lower-left overview camera in "large map" mode, `null` otherwise. */
+  private minimapCamera: Phaser.Cameras.Scene2D.Camera | null = null;
+  /** World units per minimap screen pixel — used to size the fixed-screen-size player dots. */
+  private minimapZoom = 1;
+  /** Player/bot dots drawn only for the minimap (the normal head markers are too small to read at that zoom). */
+  private minimapMarkers: Phaser.GameObjects.Arc[] = [];
   /** Display-only: who's currently trailing whom, built from each tick's `captureEvents`. */
   private chains: ChainMap = {};
   /** Recent head positions per player, used to lay the trailing chain out along consecutive cells like a snake body. Reset on death. */
@@ -156,10 +195,12 @@ class LandGrabScene extends Phaser.Scene {
     this.avatarRef = data.avatarRef;
     this.onTick = data.onTick;
     this.cellSize = data.cellSize;
+    this.isLargeMap = data.isLargeMap;
   }
 
   create() {
     this.graphics = this.add.graphics();
+    if (this.isLargeMap) this.setupLargeMapCamera();
     this.draw();
 
     this.input.keyboard?.on("keydown", (event: KeyboardEvent) => {
@@ -207,6 +248,33 @@ class LandGrabScene extends Phaser.Scene {
     });
   }
 
+  /** Constrain the main camera to the board and add the lower-left overview camera. Runs once, before the first draw. */
+  private setupLargeMapCamera() {
+    const state = this.gameStateRef.current;
+    const cell = this.cellSize;
+    const worldWidth = state.colCount * cell;
+    const worldHeight = state.rowCount * cell;
+    this.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
+
+    const aspect = worldWidth / worldHeight;
+    const mmWidth = aspect >= 1 ? MINIMAP_MAX_SIZE : Math.round(MINIMAP_MAX_SIZE * aspect);
+    const mmHeight = aspect >= 1 ? Math.round(MINIMAP_MAX_SIZE / aspect) : MINIMAP_MAX_SIZE;
+    const x = MINIMAP_MARGIN;
+    const y = this.scale.height - mmHeight - MINIMAP_MARGIN;
+
+    this.minimapZoom = mmWidth / worldWidth;
+    const minimap = this.cameras.add(x, y, mmWidth, mmHeight);
+    minimap.setZoom(this.minimapZoom);
+    minimap.centerOn(worldWidth / 2, worldHeight / 2);
+    minimap.setBackgroundColor(0x0f172a);
+    this.minimapCamera = minimap;
+
+    const border = this.add.graphics().setScrollFactor(0);
+    border.lineStyle(2, 0x64748b, 0.9);
+    border.strokeRect(x + 1, y + 1, mmWidth - 2, mmHeight - 2);
+    minimap.ignore(border);
+  }
+
   /** (Re)bake `grid` into the shared avatar canvas texture, skipping the redraw when it's unchanged since last tick. */
   private ensureAvatarTexture(grid: AvatarGrid): string {
     const signature = grid.join(",");
@@ -238,9 +306,17 @@ class LandGrabScene extends Phaser.Scene {
     const g = this.graphics;
     g.clear();
 
+    if (this.isLargeMap) {
+      const human = state.players[HUMAN_ID];
+      if (human) this.cameras.main.centerOn(human.head.col * cell + cell / 2, human.head.row * cell + cell / 2);
+    }
+
     g.fillStyle(0x0f172a, 1);
     g.fillRect(0, 0, width, height);
 
+    // Cells are normally inset by 1px so a grid of gaps shows through; in large-map mode that
+    // gap reads as a grid line across a whole territory, so fill edge-to-edge there instead.
+    const cellInset = this.isLargeMap ? 0 : 1;
     for (let row = 0; row < state.rowCount; row++) {
       for (let col = 0; col < state.colCount; col++) {
         const cellState = state.grid[row][col];
@@ -248,16 +324,20 @@ class LandGrabScene extends Phaser.Scene {
         const player = state.players[cellState.playerId];
         const color = player?.color ?? 0xffffff;
         g.fillStyle(color, cellState.kind === "territory" ? 0.9 : 0.4);
-        g.fillRect(col * cell + 1, row * cell + 1, cell - 2, cell - 2);
+        g.fillRect(col * cell + cellInset, row * cell + cellInset, cell - cellInset * 2, cell - cellInset * 2);
       }
     }
 
-    g.lineStyle(1, 0x1e293b, 0.6);
-    for (let col = 0; col <= state.colCount; col++) {
-      g.lineBetween(col * cell, 0, col * cell, height);
-    }
-    for (let row = 0; row <= state.rowCount; row++) {
-      g.lineBetween(0, row * cell, width, row * cell);
+    // Skipped in large-map mode: at that cell density the grid reads as noise, and this is
+    // thousands of lineBetween calls per tick just to redraw a texture the player already saw.
+    if (!this.isLargeMap) {
+      g.lineStyle(1, 0x1e293b, 0.6);
+      for (let col = 0; col <= state.colCount; col++) {
+        g.lineBetween(col * cell, 0, col * cell, height);
+      }
+      for (let row = 0; row <= state.rowCount; row++) {
+        g.lineBetween(0, row * cell, width, row * cell);
+      }
     }
 
     // Display-only bookkeeping: fold this tick's eliminations into who's
@@ -318,6 +398,21 @@ class LandGrabScene extends Phaser.Scene {
         this.headMarkers.push(marker);
       }
     }
+
+    for (const marker of this.minimapMarkers) marker.destroy();
+    this.minimapMarkers = [];
+    if (this.isLargeMap && this.minimapCamera) {
+      const worldRadius = MINIMAP_MARKER_SCREEN_RADIUS / this.minimapZoom;
+      for (const player of Object.values(state.players)) {
+        if (!player.alive) continue;
+        const cx = player.head.col * cell + cell / 2;
+        const cy = player.head.row * cell + cell / 2;
+        const marker = this.add.circle(cx, cy, worldRadius, player.color);
+        marker.setStrokeStyle(Math.max(1, worldRadius * 0.25), 0xffffff, 0.9);
+        this.cameras.main.ignore(marker);
+        this.minimapMarkers.push(marker);
+      }
+    }
   }
 }
 
@@ -340,7 +435,9 @@ export interface LandGrabDemoProps {
 export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState<GridDims>(DEFAULT_DIMS);
-  const [fullScreen, setFullScreen] = useState(false);
+  const [boardMode, setBoardMode] = useState<BoardMode>("demo");
+  // Canvas size in "large map" mode, where the board (`dims`) is bigger than what's on screen. `null` elsewhere.
+  const [viewport, setViewport] = useState<{ cols: number; rows: number } | null>(null);
 
   const [paused, setPaused] = useState(false);
   const [speed, setSpeed] = useState(2);
@@ -455,39 +552,52 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Toggling full screen changes the cell count, so the game restarts on a fresh board.
-  const toggleFullScreen = () => {
-    const next = !fullScreen;
-    setFullScreen(next);
-    setDims(next ? computeFullScreenDims() : DEFAULT_DIMS);
+  // Switching board modes changes the cell count (and, for "large", the world/viewport
+  // split), so the game restarts on a fresh board. Picking the already-active mode exits
+  // back to the small demo board.
+  const enterMode = (mode: BoardMode) => {
+    const next = boardMode === mode ? "demo" : mode;
+    setBoardMode(next);
+    if (next === "demo") {
+      setDims(DEFAULT_DIMS);
+      setViewport(null);
+    } else if (next === "fullscreen") {
+      setDims(computeFullScreenDims());
+      setViewport(null);
+    } else {
+      const { world, viewportCols, viewportRows } = computeLargeMapDims();
+      setDims(world);
+      setViewport({ cols: viewportCols, rows: viewportRows });
+    }
   };
 
   useEffect(() => {
-    if (!fullScreen) return;
+    if (boardMode === "demo") return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setFullScreen(false);
+        setBoardMode("demo");
         setDims(DEFAULT_DIMS);
+        setViewport(null);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [fullScreen]);
+  }, [boardMode]);
 
   // Windowed mode: once the stats view is showing (the auto-played highlight
   // replay has finished, or there was nothing to replay), auto-dismiss the
-  // result modal and start a fresh match after 5s. Full screen keeps the modal
-  // up so the final board stays on screen until dismissed. Suspended while a
-  // replay is playing in the modal — flipping `replayInModal` back to `false`
-  // (via the replay's `onEnded`) is what starts this timer.
+  // result modal and start a fresh match after 5s. Full screen (and large map)
+  // keeps the modal up so the final board stays on screen until dismissed.
+  // Suspended while a replay is playing in the modal — flipping `replayInModal`
+  // back to `false` (via the replay's `onEnded`) is what starts this timer.
   useEffect(() => {
-    if (hideControls || fullScreen || gameOver === null || replayInModal) return;
+    if (hideControls || boardMode !== "demo" || gameOver === null || replayInModal) return;
     const timer = window.setTimeout(() => {
       closeGameOver();
       restart();
     }, 5000);
     return () => window.clearTimeout(timer);
-  }, [gameOver, fullScreen, hideControls, replayInModal]);
+  }, [gameOver, boardMode, hideControls, replayInModal]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -506,10 +616,12 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
     controlRef.current.paused = false;
     setPaused(false);
 
+    const canvasCols = viewport?.cols ?? dims.cols;
+    const canvasRows = viewport?.rows ?? dims.rows;
     const game = new Phaser.Game({
       type: Phaser.AUTO,
-      width: dims.cols * dims.cell,
-      height: dims.rows * dims.cell,
+      width: canvasCols * dims.cell,
+      height: canvasRows * dims.cell,
       parent: containerRef.current,
       backgroundColor: "#0f172a",
     });
@@ -527,6 +639,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
         rulesRef,
         avatarRef,
         cellSize: dims.cell,
+        isLargeMap: boardMode === "large",
         onTick: (state: GameState, chainPeaks: Record<string, number>) => {
           if (replayLogRef.current) recordFrame(replayLogRef.current, state);
           setPlayers({ ...state.players });
@@ -556,7 +669,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
     };
     // Profiles/rules/autopilot are read from refs on build, not deps — editing
     // them must not tear down and restart the match.
-  }, [restartToken, dims]);
+  }, [restartToken, dims, viewport, boardMode]);
 
   const handleProfileChange = (id: string, key: keyof BotProfile, value: number) => {
     setProfiles((prev) => ({ ...prev, [id]: { ...prev[id], [key]: value } }));
@@ -573,7 +686,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   return (
     <div
       className={
-        (fullScreen ? "fixed inset-0 z-50 bg-background p-4 overflow-auto " : "") + "flex flex-col gap-4"
+        (boardMode !== "demo" ? "fixed inset-0 z-50 bg-background p-4 overflow-auto " : "") + "flex flex-col gap-4"
       }
     >
       <div className="flex flex-col min-[1400px]:flex-row min-[1400px]:items-start gap-4">
@@ -659,7 +772,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
         {!hideControls && (
           <aside
             className={
-              (fullScreen ? "block " : "hidden min-[1400px]:block ") +
+              (boardMode !== "demo" ? "block " : "hidden min-[1400px]:block ") +
               "shrink-0 w-56 rounded-lg border border-border p-4"
             }
           >
@@ -679,15 +792,25 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
                 <li key={player.id} className="text-destructive text-xs">{displayLabel(player)} trying to respawn…</li>
               ))}
             </ul>
-            <button
-              onClick={toggleFullScreen}
-              className="mt-4 w-full px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
-            >
-              {fullScreen ? "Exit full screen" : "Full screen"}
-            </button>
-            {fullScreen && (
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                onClick={() => enterMode("fullscreen")}
+                className="w-full px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                {boardMode === "fullscreen" ? "Exit full screen" : "Full screen"}
+              </button>
+              <button
+                onClick={() => enterMode("large")}
+                className="w-full px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                {boardMode === "large" ? "Exit large map" : "Large map"}
+              </button>
+            </div>
+            {boardMode !== "demo" && (
               <p className="mt-2 text-xs text-muted-foreground">
-                {dims.cols}×{dims.rows} cells · press Esc to exit
+                {boardMode === "large"
+                  ? `${dims.cols}×${dims.rows} world · ${viewport?.cols}×${viewport?.rows} view · press Esc to exit`
+                  : `${dims.cols}×${dims.rows} cells · press Esc to exit`}
               </p>
             )}
           </aside>
