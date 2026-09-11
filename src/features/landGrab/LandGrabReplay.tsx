@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { frameGridAt, type ReplayLog } from "./replayLog";
+import { frameChainsAt, frameGridAt, frameHeadHistoryAt, type ReplayLog } from "./replayLog";
+import { chainPositions } from "./chainTrail";
 import { TICK_MS } from "./simulation";
 
 const SPEED_OPTIONS = [0.5, 1, 2, 4];
@@ -55,6 +56,30 @@ function drawFrame(canvas: HTMLCanvasElement, log: ReplayLog, index: number, cel
     ctx.lineTo(width, row * cell);
   }
   ctx.stroke();
+
+  // Display-only: the trailing chain of previously-captured avatars, replayed
+  // the same way the live game builds it — see `chainTrail.ts`.
+  const chains = frameChainsAt(log, index);
+  const headHistory = frameHeadHistoryAt(log, index);
+  for (const id of log.playerOrder) {
+    const player = frame.players[id];
+    const chain = chains[id];
+    if (!player || !player.alive || !chain || chain.length === 0) continue;
+    const positions = chainPositions(headHistory[id] ?? [], chain.length);
+    for (let i = 0; i < positions.length; i++) {
+      const pos = positions[i];
+      const capturedColor = log.playerMeta[chain[i]]?.color ?? log.playerMeta[id]?.color ?? 0xffffff;
+      const cx = pos.col * cell + cell / 2;
+      const cy = pos.row * cell + cell / 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, cell * 0.22, 0, Math.PI * 2);
+      ctx.fillStyle = rgba(capturedColor, 0.85);
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+      ctx.stroke();
+    }
+  }
 
   for (const id of log.playerOrder) {
     const player = frame.players[id];

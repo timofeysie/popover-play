@@ -3,6 +3,8 @@ import {
   createReplayLog,
   recordFrame,
   frameGridAt,
+  frameChainsAt,
+  frameHeadHistoryAt,
   MAX_REPLAY_TICKS,
   type ReplayLog,
 } from "@/features/landGrab/replayLog";
@@ -13,6 +15,7 @@ import {
   type GameState,
   type PlayerConfig,
 } from "@/features/landGrab/simulation";
+import type { CellState } from "@/features/landGrab/grid";
 import type { Direction } from "@/features/landGrab/types";
 
 const HUMAN: PlayerConfig = { id: "p1", label: "You", color: 0x38bdf8, isBot: false };
@@ -121,5 +124,59 @@ describe("frameGridAt", () => {
     const { states, log } = runPath(["up", "up"]);
     expect(frameGridAt(log, -5)).toEqual(states[0].grid);
     expect(frameGridAt(log, 999)).toEqual(states[states.length - 1].grid);
+  });
+});
+
+describe("captured-avatar chain — display-only replay data", () => {
+  /** p1 cuts p2's trail on the recorded step, exactly like the simulation test. */
+  function captureLog() {
+    const configs: PlayerConfig[] = [
+      { id: "p1", label: "You", color: 0x38bdf8, isBot: false },
+      { id: "p2", label: "Rival", color: 0xf87171, isBot: true },
+    ];
+    let state = createInitialGameState(9, 9, configs);
+    const grid = state.grid.map((row) => row.map((): CellState => ({ kind: "neutral" })));
+    for (const [r, c] of [[0, 0], [0, 1], [1, 0], [1, 1]]) grid[r][c] = { kind: "territory", playerId: "p1" };
+    const p1Trail = [{ row: 1, col: 2 }, { row: 1, col: 3 }, { row: 1, col: 4 }];
+    for (const { row, col } of p1Trail) grid[row][col] = { kind: "trail", playerId: "p1" };
+    for (const [r, c] of [[6, 6], [6, 7], [7, 6], [7, 7]]) grid[r][c] = { kind: "territory", playerId: "p2" };
+    const p2Trail = [
+      { row: 6, col: 5 }, { row: 5, col: 5 }, { row: 4, col: 5 },
+      { row: 3, col: 5 }, { row: 2, col: 5 }, { row: 1, col: 5 },
+    ];
+    for (const { row, col } of p2Trail) grid[row][col] = { kind: "trail", playerId: "p2" };
+    state = {
+      ...state,
+      grid,
+      players: {
+        ...state.players,
+        p1: { ...state.players.p1, home: { row: 0, col: 0 }, head: { row: 1, col: 4 }, facing: "right", trail: [...p1Trail], hasStarted: true },
+        p2: { ...state.players.p2, home: { row: 6, col: 6 }, head: { row: 1, col: 5 }, facing: "up", trail: [...p2Trail] },
+      },
+    };
+
+    const log = createReplayLog(state);
+    setPlayerFacing(state, "p1", "right");
+    state = stepGame(state); // p1: (1,4) -> (1,5), cutting p2's wake
+    recordFrame(log, state);
+    return { state, log };
+  }
+
+  it("records the tick's capture event on the frame", () => {
+    const { log } = captureLog();
+    expect(log.frames[1].captureEvents).toEqual([{ capturerId: "p1", victimId: "p2" }]);
+    expect(log.frames[0].captureEvents).toEqual([]);
+  });
+
+  it("frameChainsAt reconstructs the chain from the recorded events", () => {
+    const { log } = captureLog();
+    expect(frameChainsAt(log, 0)).toEqual({});
+    expect(frameChainsAt(log, 1)).toEqual({ p1: ["p2"], p2: [] });
+  });
+
+  it("frameHeadHistoryAt tracks p1's path so the chain has somewhere to sit", () => {
+    const { log } = captureLog();
+    const history = frameHeadHistoryAt(log, 1);
+    expect(history.p1[history.p1.length - 1]).toEqual({ row: 1, col: 5 }); // p1's post-capture head
   });
 });

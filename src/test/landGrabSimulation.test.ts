@@ -194,8 +194,7 @@ describe("stepGame — cutting a trail captures both wakes and bridges the land"
     expect(p1.timesCaptured).toBe(0);
     expect(p1.trail).toEqual([]);
     expect(p1.head).toEqual({ row: 1, col: 5 });
-    expect(p1.chain).toEqual(["p2"]); // p2's avatar now trails p1 like a snake
-    expect(p2.chain).toEqual([]);
+    expect(state.captureEvents).toEqual([{ capturerId: "p1", victimId: "p2" }]);
 
     // The whole bridge is p1 territory: base, p1 wake, the cut cell, p2 wake, p2 land.
     for (const { row, col } of [
@@ -290,8 +289,8 @@ describe("stepGame — a fully enclosed player is sunk", () => {
     expect(p2.alive).toBe(false); // …so p2 is sunk, not left wandering
     expect(p2.respawnAt).toBe(5); // nextTick (3) + respawnDelayTicks (2)
     expect(p2.trail).toEqual([]);
-    expect(p2.chain).toEqual([]);
-    expect(state.players.p1.chain).toEqual(["p2"]); // encircled, not trail-cut — still joins the chain
+    // Encircled, not trail-cut — still reported as an elimination event.
+    expect(state.captureEvents).toEqual([{ capturerId: "p1", victimId: "p2" }]);
     // p2's orphaned wake is wiped off the board.
     expect(state.grid[5][0]).toEqual({ kind: "neutral" });
     expect(state.grid[6][0]).toEqual({ kind: "neutral" });
@@ -334,48 +333,6 @@ describe("stepGame — a fully enclosed player is sunk", () => {
     expect(state.players.p2.alive).toBe(true); // still holds (6,6)
     expect(state.players.p2.ownedCount).toBe(1);
     expect(state.players.p2.respawnAt).toBeNull();
-  });
-});
-
-describe("stepGame — captured avatar chain", () => {
-  it("prepends the victim (and their own chain) to the capturer's, and clears the victim's", () => {
-    const configs: PlayerConfig[] = [
-      { id: "p1", label: "Victim", color: 0x38bdf8, isBot: false },
-      { id: "p2", label: "Attacker", color: 0xf87171, isBot: false },
-    ];
-    let state = createInitialGameState(9, 9, configs);
-
-    // Same geometry as the trail-cut test above, but p2 is the one moving in —
-    // p2's base top-left with a wake running east, p1's wake running north up
-    // to right next to p2's head, so p2 cuts p1 this time.
-    const grid = state.grid.map((row) => row.map((): CellState => ({ kind: "neutral" })));
-    for (const [r, c] of [[0, 0], [0, 1], [1, 0], [1, 1]]) grid[r][c] = { kind: "territory", playerId: "p2" };
-    const p2Trail = [{ row: 1, col: 2 }, { row: 1, col: 3 }, { row: 1, col: 4 }];
-    for (const { row, col } of p2Trail) grid[row][col] = { kind: "trail", playerId: "p2" };
-    for (const [r, c] of [[6, 6], [6, 7], [7, 6], [7, 7]]) grid[r][c] = { kind: "territory", playerId: "p1" };
-    const p1Trail = [
-      { row: 6, col: 5 }, { row: 5, col: 5 }, { row: 4, col: 5 },
-      { row: 3, col: 5 }, { row: 2, col: 5 }, { row: 1, col: 5 },
-    ];
-    for (const { row, col } of p1Trail) grid[row][col] = { kind: "trail", playerId: "p1" };
-
-    state = {
-      ...state,
-      grid,
-      players: {
-        ...state.players,
-        p2: { ...state.players.p2, home: { row: 0, col: 0 }, head: { row: 1, col: 4 }, facing: "right", trail: [...p2Trail], hasStarted: true, chain: ["old-catch"] },
-        p1: { ...state.players.p1, home: { row: 6, col: 6 }, head: { row: 1, col: 5 }, facing: "up", trail: [...p1Trail], chain: ["ghost"] },
-      },
-    };
-
-    setPlayerFacing(state, "p2", "right");
-    state = stepGame(state); // p2: (1,4) -> (1,5), cutting p1's wake — p1 was already trailing "ghost"
-
-    expect(state.players.p1.alive).toBe(false);
-    expect(state.players.p1.chain).toEqual([]); // dying loses your whole chain
-    // p1 joins the front of p2's chain, bringing p1's own passenger along behind them.
-    expect(state.players.p2.chain).toEqual(["p1", "ghost", "old-catch"]);
   });
 });
 

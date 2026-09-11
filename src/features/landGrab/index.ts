@@ -1,6 +1,8 @@
 export { LandGrabDemo } from "./LandGrabDemo";
 export { createInitialGameState, setPlayerFacing, stepGame, DEFAULT_GAME_RULES } from "./simulation";
-export type { GameState, GameRules, PlayerConfig, PlayerState } from "./simulation";
+export type { GameState, GameRules, PlayerConfig, PlayerState, CaptureEvent } from "./simulation";
+export { applyCaptureEvents, clearDeadChains, appendHeadHistory, chainPositions } from "./chainTrail";
+export type { ChainMap } from "./chainTrail";
 export {
   DEFAULT_BOT_PROFILE,
   BOT_PROFILE_FIELDS,
@@ -38,7 +40,14 @@ export {
   MAX_STORED_GAME_RECORDS,
 } from "./gameRecord";
 export type { LandGrabGameRecord, LandGrabPlayerRecord } from "./gameRecord";
-export { createReplayLog, recordFrame, frameGridAt, MAX_REPLAY_TICKS } from "./replayLog";
+export {
+  createReplayLog,
+  recordFrame,
+  frameGridAt,
+  frameChainsAt,
+  frameHeadHistoryAt,
+  MAX_REPLAY_TICKS,
+} from "./replayLog";
 export type {
   ReplayLog,
   ReplayFrame,

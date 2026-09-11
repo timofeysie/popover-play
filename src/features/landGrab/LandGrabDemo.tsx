@@ -11,6 +11,7 @@ import {
   type PlayerConfig,
   type PlayerState,
 } from "./simulation";
+import { applyCaptureEvents, appendHeadHistory, chainPositions, clearDeadChains, type ChainMap } from "./chainTrail";
 import { cloneProfile, DEFAULT_BOT_PROFILE, type BotProfile } from "./botProfile";
 import { createBotMemory, DEFAULT_BOT_TYPE, type BotType } from "./botStrategy";
 import { BotProfilePanel } from "./BotProfilePanel";
@@ -36,8 +37,6 @@ import type { Vec2 } from "./types";
 const CELL_SIZE = 22;
 const DEFAULT_DIMS = { rows: 16, cols: 24, cell: CELL_SIZE };
 const SPEED_OPTIONS = [0.25, 0.5, 1, 2, 4];
-/** Cells between each trailing chain segment, like the gap between links in a snake body. */
-const CHAIN_LINK_SPACING = 2;
 
 interface GridDims {
   rows: number;
@@ -124,7 +123,9 @@ class LandGrabScene extends Phaser.Scene {
   private graphics!: Phaser.GameObjects.Graphics;
   private headMarkers: Phaser.GameObjects.Arc[] = [];
   private chainMarkers: Phaser.GameObjects.Arc[] = [];
-  /** Recent head positions per player, used to lay the trailing chain out like a snake body. Reset on death. */
+  /** Display-only: who's currently trailing whom, built from each tick's `captureEvents`. */
+  private chains: ChainMap = {};
+  /** Recent head positions per player, used to lay the trailing chain out along consecutive cells like a snake body. Reset on death. */
   private headHistory: Record<string, Vec2[]> = {};
 
   constructor() {
@@ -221,35 +222,36 @@ class LandGrabScene extends Phaser.Scene {
       g.lineBetween(0, row * cell, width, row * cell);
     }
 
-    // Track each player's recent head positions so a captured-avatar chain has
-    // somewhere to sit behind the head, like a snake body. Dead players restart
-    // the trail from wherever they respawn.
+    // Display-only bookkeeping: fold this tick's eliminations into who's
+    // trailing whom, then track each player's recent head positions so the
+    // chain has somewhere to sit — consecutive cells right behind the head,
+    // like a snake body. Dead players restart both from wherever they respawn.
+    this.chains = applyCaptureEvents(this.chains, state.captureEvents);
+    this.chains = clearDeadChains(
+      this.chains,
+      new Set(Object.values(state.players).filter((p) => p.alive).map((p) => p.id)),
+    );
     for (const player of Object.values(state.players)) {
-      const history = this.headHistory[player.id] ?? (this.headHistory[player.id] = []);
       if (!player.alive) {
-        history.length = 0;
+        this.headHistory[player.id] = [];
         continue;
       }
-      const last = history[history.length - 1];
-      if (!last || last.row !== player.head.row || last.col !== player.head.col) {
-        history.push({ row: player.head.row, col: player.head.col });
-      }
-      const maxLen = player.chain.length * CHAIN_LINK_SPACING + 1;
-      if (history.length > maxLen) history.splice(0, history.length - maxLen);
+      const chainLength = this.chains[player.id]?.length ?? 0;
+      this.headHistory[player.id] = appendHeadHistory(this.headHistory[player.id] ?? [], player.head, chainLength + 1);
     }
 
     for (const marker of this.chainMarkers) marker.destroy();
     this.chainMarkers = [];
     for (const player of Object.values(state.players)) {
-      if (!player.alive || player.chain.length === 0) continue;
-      const history = this.headHistory[player.id] ?? [];
-      for (let i = 0; i < player.chain.length; i++) {
-        const stepsBack = (i + 1) * CHAIN_LINK_SPACING;
-        const pos = history[Math.max(0, history.length - 1 - stepsBack)];
-        if (!pos) continue;
+      if (!player.alive) continue;
+      const chain = this.chains[player.id];
+      if (!chain || chain.length === 0) continue;
+      const positions = chainPositions(this.headHistory[player.id] ?? [], chain.length);
+      for (let i = 0; i < positions.length; i++) {
+        const pos = positions[i];
         const cx = pos.col * cell + cell / 2;
         const cy = pos.row * cell + cell / 2;
-        const capturedColor = state.players[player.chain[i]]?.color ?? player.color;
+        const capturedColor = state.players[chain[i]]?.color ?? player.color;
         const marker = this.add.circle(cx, cy, cell * 0.22, capturedColor, 0.85);
         marker.setStrokeStyle(1.5, 0xffffff, 0.6);
         this.chainMarkers.push(marker);

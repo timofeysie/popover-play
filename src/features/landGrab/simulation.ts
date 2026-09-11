@@ -59,13 +59,18 @@ export interface PlayerState extends PlayerConfig {
   botMemory: BotMemory;
   /** True for bots, or a human whose autopilot toggle is on. */
   autopilot: boolean;
-  /**
-   * Ids of players this one has captured and still trails behind it, like
-   * Paper.io's chain of skins — nearest (most recently captured) first. Cleared
-   * to `[]` the instant this player is themself captured; a captured player's
-   * own chain is folded onto the front of their captor's.
-   */
-  chain: string[];
+}
+
+/**
+ * One player eliminating another on a single tick, by trail cut or by
+ * encirclement — reported purely for cosmetics (the trailing chain of
+ * captured avatars drawn by `LandGrabDemo`/`LandGrabReplay`, via
+ * `chainTrail.ts`). Has no bearing on scoring or future ticks; `stepGame`
+ * never reads a previous tick's `captureEvents` back.
+ */
+export interface CaptureEvent {
+  capturerId: string;
+  victimId: string;
 }
 
 export interface GameState {
@@ -83,6 +88,8 @@ export interface GameState {
    * this is set.
    */
   winnerId: string | null;
+  /** Eliminations that happened on this tick specifically — empty on most ticks. */
+  captureEvents: CaptureEvent[];
 }
 
 /** Evenly spread starting corners for up to 4 players; anything past that falls back to a scanned spawn. */
@@ -132,7 +139,6 @@ export function createInitialGameState(
       captures: 0,
       timesCaptured: 0,
       hasStarted: config.isBot || autopilot,
-      chain: [],
     };
   });
 
@@ -150,6 +156,7 @@ export function createInitialGameState(
     tick: 0,
     rules: { ...DEFAULT_GAME_RULES, ...rules },
     winnerId: null,
+    captureEvents: [],
   };
 }
 
@@ -265,11 +272,14 @@ export function stepGame(state: GameState): GameState {
   let grid = state.grid;
   const rules = state.rules ?? DEFAULT_GAME_RULES;
   const players: Record<string, PlayerState> = {};
-  for (const [id, p] of Object.entries(state.players)) players[id] = { ...p, trail: [...p.trail], chain: [...p.chain] };
+  for (const [id, p] of Object.entries(state.players)) players[id] = { ...p, trail: [...p.trail] };
   // Whoever's capture loop most recently reshuffled a bystander's territory
   // this tick — used to credit an "encircled and swallowed" elimination (no
-  // trail was cut) to the right player's chain, same as a direct trail cut.
+  // trail was cut) to the right player in `captureEvents`, same as a direct
+  // trail cut.
   const splitActor = new Map<string, string>();
+  // Eliminations on this tick, reported for display only (see `CaptureEvent`).
+  const captureEvents: CaptureEvent[] = [];
 
   const nextTick = state.tick + 1;
 
@@ -373,10 +383,7 @@ export function stepGame(state: GameState): GameState {
       player.captures += 1;
       player.trail = [];
       player.head = next;
-      // The victim's avatar (and anyone already trailing them) joins the front
-      // of the capturer's chain, like Paper.io's train of captured skins.
-      player.chain = [victim.id, ...victim.chain, ...player.chain];
-      victim.chain = [];
+      captureEvents.push({ capturerId: player.id, victimId: victim.id });
 
       // The capture fill can still swallow a pocket of a *third* player's land;
       // resolve their remaining territory the same way a normal capture does.
@@ -432,14 +439,12 @@ export function stepGame(state: GameState): GameState {
     player.respawnAt = nextTick + rules.respawnDelayTicks;
     grid = clearTrailCells(grid, player.id);
 
-    // Encircled and swallowed rather than trail-cut — still a capture, so the
-    // chain passes to whoever's loop closed around them, same as a trail cut.
+    // Encircled and swallowed rather than trail-cut — still an elimination,
+    // credited to whoever's loop closed around them, same as a trail cut.
     const captorId = splitActor.get(player.id);
-    const captor = captorId ? players[captorId] : undefined;
-    if (captor && captor.alive) {
-      captor.chain = [player.id, ...player.chain, ...captor.chain];
+    if (captorId && players[captorId]?.alive) {
+      captureEvents.push({ capturerId: captorId, victimId: player.id });
     }
-    player.chain = [];
   }
 
   const winnerId = findWinner(state, players, grid);
@@ -453,5 +458,6 @@ export function stepGame(state: GameState): GameState {
     tick: nextTick,
     rules,
     winnerId,
+    captureEvents,
   };
 }

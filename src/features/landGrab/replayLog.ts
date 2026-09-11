@@ -1,5 +1,6 @@
 import type { CellState } from "./grid";
-import type { GameState, PlayerState } from "./simulation";
+import type { CaptureEvent, GameState, PlayerState } from "./simulation";
+import { applyCaptureEvents, appendHeadHistory, clearDeadChains, type ChainMap } from "./chainTrail";
 import type { Direction, Vec2 } from "./types";
 
 /**
@@ -42,6 +43,8 @@ export interface ReplayFrame {
   players: Record<string, ReplayPlayerFrame>;
   /** The winner id once the match is decided on this frame, else `null`. */
   winnerId: string | null;
+  /** Eliminations on this tick — empty on most frames. Display-only, see `CaptureEvent`. */
+  captureEvents: CaptureEvent[];
 }
 
 /** Static, once-per-match display info so the replay renderer needs no live state. */
@@ -138,6 +141,7 @@ export function createReplayLog(state: GameState): ReplayLog {
         cellChanges,
         players: playersFrame(state),
         winnerId: state.winnerId,
+        captureEvents: [], // no captures on the opening frame
       },
     ],
     truncated: false,
@@ -178,6 +182,7 @@ export function recordFrame(log: ReplayLog, state: GameState): void {
     cellChanges,
     players: playersFrame(state),
     winnerId: state.winnerId,
+    captureEvents: state.captureEvents,
   });
 }
 
@@ -193,4 +198,45 @@ export function frameGridAt(log: ReplayLog, index: number): CellState[][] {
     }
   }
   return grid;
+}
+
+/**
+ * Rebuild the captured-avatar chain map as of frame `index` (clamped into
+ * range) by replaying every frame's `captureEvents` from frame 0 forward —
+ * mirrors `frameGridAt`. Display-only, same as the live game's chain.
+ */
+export function frameChainsAt(log: ReplayLog, index: number): ChainMap {
+  const target = Math.max(0, Math.min(index, log.frames.length - 1));
+  let chains: ChainMap = {};
+  for (let i = 0; i <= target; i++) {
+    const frame = log.frames[i];
+    chains = applyCaptureEvents(chains, frame.captureEvents);
+    const aliveIds = new Set(Object.keys(frame.players).filter((id) => frame.players[id].alive));
+    chains = clearDeadChains(chains, aliveIds);
+  }
+  return chains;
+}
+
+/**
+ * Rebuild each player's head-position history from frame 0 through `index`
+ * (clamped into range) — the path `chainPositions` places trailing avatars
+ * along. Mirrors the live game's per-tick `appendHeadHistory` calls, reset
+ * whenever a player is dead on a frame.
+ */
+export function frameHeadHistoryAt(log: ReplayLog, index: number): Record<string, Vec2[]> {
+  const target = Math.max(0, Math.min(index, log.frames.length - 1));
+  const history: Record<string, Vec2[]> = {};
+  for (let i = 0; i <= target; i++) {
+    const frame = log.frames[i];
+    for (const id of log.playerOrder) {
+      const player = frame.players[id];
+      if (!player) continue;
+      if (!player.alive) {
+        history[id] = [];
+        continue;
+      }
+      history[id] = appendHeadHistory(history[id] ?? [], player.head);
+    }
+  }
+  return history;
 }
