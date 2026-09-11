@@ -31,6 +31,15 @@ export interface BotProfile {
   frontierHugBonus: number;
   /** Surveyor: bail to the return leg once a rival head gets this close (Manhattan). */
   rivalAvoidRadius: number;
+  // --- Invader archetype (see `invaderStrategy.ts` / `docs/land-grab/bots.md`) ---
+  /** Invader: along-line gap to the target at which `hunt` flips to `dodge`. */
+  engageDistance: number;
+  /** Invader: perpendicular steps the juke lasts before switching to `cut`. */
+  dodgeDistance: number;
+  /** Invader: how far the `cut` phase will chase a rival wake before regrouping. */
+  cutSearchRadius: number;
+  /** Invader: hard cap on ticks in one phase before falling back to `regroup` — the anti-deadlock guard. */
+  commitLimit: number;
 }
 
 export const DEFAULT_BOT_PROFILE: BotProfile = {
@@ -45,6 +54,10 @@ export const DEFAULT_BOT_PROFILE: BotProfile = {
   targetTrailLength: 10,
   frontierHugBonus: 3,
   rivalAvoidRadius: 3,
+  engageDistance: 3,
+  dodgeDistance: 1,
+  cutSearchRadius: 4,
+  commitLimit: 10,
 };
 
 export function cloneProfile(profile: BotProfile): BotProfile {
@@ -165,4 +178,52 @@ export const SURVEYOR_EXTRA_FIELDS: BotProfileField[] = [
 export const SURVEYOR_PROFILE_FIELDS: BotProfileField[] = [
   ...SURVEYOR_EXTRA_FIELDS,
   ...BOT_PROFILE_FIELDS.filter((f) => f.key !== "homesickTrailLength"),
+];
+
+/** The four Invader-only knobs, defined for the panel. */
+export const INVADER_EXTRA_FIELDS: BotProfileField[] = [
+  {
+    key: "engageDistance",
+    label: "Engage distance",
+    min: 1,
+    max: 8,
+    step: 1,
+    hint: "Along-line gap to the target at which the Invader stops closing and jukes sideways. Lower → later, riskier dodge.",
+  },
+  {
+    key: "dodgeDistance",
+    label: "Dodge distance",
+    min: 1,
+    max: 3,
+    step: 1,
+    hint: "How many cells the sideways juke covers before the Invader curls back to cut. Wider → more room, slower cut.",
+  },
+  {
+    key: "cutSearchRadius",
+    label: "Cut search radius",
+    min: 1,
+    max: 10,
+    step: 1,
+    hint: "How far the Invader will chase the target's fresh wake to cut it before giving up and regrouping.",
+  },
+  {
+    key: "commitLimit",
+    label: "Commit limit",
+    min: 3,
+    max: 30,
+    step: 1,
+    hint: "Hard cap on ticks spent in one phase before bailing to a regroup. The anti-deadlock guard — raise it for a more stubborn hunter.",
+  },
+];
+
+/**
+ * Fields the Invader archetype actually reads: the four knobs above plus the
+ * shared movement/scoring knobs it borrows (`neutralBonus`, `jitter`, `homePull`,
+ * `closeLoopReward`, `offBoardPenalty`). Order here is the panel display order.
+ */
+export const INVADER_PROFILE_FIELDS: BotProfileField[] = [
+  ...INVADER_EXTRA_FIELDS,
+  ...BOT_PROFILE_FIELDS.filter((f) =>
+    (["neutralBonus", "jitter", "homePull", "closeLoopReward", "offBoardPenalty"] as (keyof BotProfile)[]).includes(f.key),
+  ),
 ];

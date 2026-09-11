@@ -4,17 +4,27 @@ How the computer-controlled boats in `src/features/landGrab/LandGrabDemo.tsx` ch
 their moves. This is a companion to the [`### Bots`](../land-grab.md#bots) summary in
 the main plan — same behaviour, more detail.
 
-> **Archetypes now split.** A default match is **one Rambler (Yellow) vs. two Surveyors
-> (Red, Green) vs. the human**. The Rambler is the original greedy roamer described
-> throughout the first half of this doc; the Surveyor is the deliberate territory
-> farmer in [Archetype: the Surveyor](#archetype-the-surveyor-the-goal-oriented-farmer-red--green).
-> Both run through the same one-call-per-tick registry — see
-> [Bot types](#bot-types-solution-architecting).
+> **Archetypes now split.** A default match is **one Rambler (Yellow) vs. one Invader
+> (Red) vs. one Surveyor (Green) vs. the human** — one of each. The Rambler is the original
+> greedy roamer described throughout the first half of this doc; the Surveyor is the
+> deliberate territory farmer in
+> [Archetype: the Surveyor](#archetype-the-surveyor-the-goal-oriented-farmer-green);
+> the Invader is the raider in [Archetype: the Invader](#archetype-the-invader-the-raider-red)
+> that baits a head-on stand-off and cuts on the dodge. All three run through the same
+> one-call-per-tick registry — see [Bot types](#bot-types-solution-architecting).
+
+> **Head-on stand-off (movement rule, all boats).** When two boats' moves would collide
+> on a tick — swap cells driving straight at each other, or both push into the same cell —
+> `stepGame` freezes *both*: no move, no trail laid, no trail cut. A face-off can't be won
+> by ramming. Every bot scorer treats a move into a stand-off like the board edge (a dead
+> tick) via `wouldStandOff` in `standoff.ts`, so bots peel out of a face-off rather than
+> lock up; the Invader turns the rule into its whole game plan.
 
 ## Table of contents
 
 - [TL;DR](#tldr)
 - [The three bots](#the-three-bots)
+- [Head-on stand-off](#head-on-stand-off)
 - [The Rambler brain: `decideBotFacing`](#the-rambler-brain-decidebotfacing)
 - [The scoring function](#the-scoring-function)
 - [Behavioural phases](#behavioural-phases)
@@ -28,22 +38,29 @@ the main plan — same behaviour, more detail.
 
 Every living bot picks a move the same way: each tick it scores the (up to four)
 directions it could turn with a greedy one-cell lookahead and takes the
-highest-scoring one — no pathfinding, no model of the other players. `decideBotFacing`
-(`src/features/landGrab/simulation.ts`) is now a one-line dispatch to the bot's
-**archetype**, registered in `botStrategy.ts`:
+highest-scoring one — no pathfinding, and only the Invader keeps any model of another
+player. `decideBotFacing` (`src/features/landGrab/simulation.ts`) is now a one-line
+dispatch to the bot's **archetype**, registered in `botStrategy.ts`:
 
 - **Rambler** (the Yellow boat) — the original brain, described in the sections below.
   Sails out laying wake; once its trail reaches `homesickTrailLength` (9) cells it turns
   "homesick" and beelines back to its own territory to close the loop and bank a modest
   capture, then repeats. Crossing its own wake does nothing — the loop only closes on
   home turf.
-- **Surveyor** (the Red and Green boats) — a goal-oriented territory farmer. Each loop
+- **Surveyor** (the Green boat) — a goal-oriented territory farmer. Each loop
   lays a wake from its frontier out toward a fresh centre-biased `aim` point (bearing
   rotated per loop), then folds it back in once the wake hits `targetTrailLength`, reaches
   `aim`, or a rival becomes a real threat. Graded scoring with a real gradient and a
   no-backtrack rule mean it never toggles between two squares or spins one fixed orbit;
   the centre bias makes two Surveyors grow toward each other so a bot match resolves. See
-  [Archetype: the Surveyor](#archetype-the-surveyor-the-goal-oriented-farmer-red--green).
+  [Archetype: the Surveyor](#archetype-the-surveyor-the-goal-oriented-farmer-green).
+- **Invader** (the Red boat) — the offensive archetype. Barely farms at all: it hunts
+  the nearest living rival, gets onto its row or column facing it, and closes until the
+  gap is inside `engageDistance`. Then it **jukes** perpendicular for `dodgeDistance`
+  ticks — sliding out of the impending stand-off — and switches to **cut**, steering onto
+  the rival's fresh wake (that step is the capture). If the cut doesn't land inside
+  `commitLimit` ticks it beelines home to regroup and picks a new target. See
+  [Archetype: the Invader](#archetype-the-invader-the-raider-red).
 
 ## The three bots
 
@@ -53,7 +70,7 @@ decides *which archetype* picks them (`undefined` → `"rambler"`).
 
 | id | Label | Colour | Archetype | Start corner (default 16×24 board) |
 | --- | --- | --- | --- | --- |
-| `bot-red` | Red Surveyor | `#f87171` | `surveyor` | bottom-right — `(12, 19)` |
+| `bot-red` | Red Invader | `#f87171` | `invader` | bottom-right — `(12, 19)` |
 | `bot-yellow` | Yellow Rambler | `#facc15` | `rambler` | top-right — `(3, 19)` |
 | `bot-green` | Green Surveyor | `#4ade80` | `surveyor` | bottom-left — `(12, 4)` |
 
@@ -80,6 +97,36 @@ Bot-specific lifecycle details:
   input-buffering rules that matter for a human ("only the most recent queued turn is
   kept") are moot for bots — they re-decide from scratch every tick.
 
+## Head-on stand-off
+
+A movement rule that every boat — bot or human — plays by, enforced in `stepGame` and
+understood by all three scorers.
+
+**The rule.** Boats resolve one at a time in `state.playerOrder`. Before that loop runs,
+`stepGame` scans every started boat's intended cell for this tick and flags any pair that
+would **collide**:
+
+- **Swap** — `A.next === B.head` *and* `B.next === A.head`: they're nose-to-nose and would
+  drive through each other.
+- **Same cell** — `A.next === B.next`: two (or more) boats push into one square.
+
+Every flagged boat is frozen for the tick: it keeps its facing but does **not** move, lay
+trail, or cut anything. It stays blocked until it or the other boat steers a different
+way. A face-off therefore cannot be won by ramming — without this, the boat that happens
+to resolve first just cuts the other's wake and captures them.
+
+The geometry lives in `src/features/landGrab/standoff.ts` (`intendedNext`, `isStandoff`,
+`wouldStandOff`), shared by `stepGame` (which enforces it) and the strategies (which read
+`wouldStandOff(state, player, next)` and score that move like the board edge — a wasted
+tick). That last part matters: two stand-off-*unaware* bots meeting nose-to-nose would
+both keep picking "forward" and lock up forever. With the guard they peel away, and a
+bot-only match always resolves.
+
+**Exploiting it.** The [Invader](#archetype-the-invader-the-raider-red) baits the
+stand-off on purpose: it lines up head-on, then side-steps one tick before contact and
+curls back onto the rival's wake as they sail past — a cut the frozen ram could never
+land.
+
 ## The Rambler brain: `decideBotFacing`
 
 > This section and the two after it ([The scoring function](#the-scoring-function),
@@ -88,7 +135,7 @@ Bot-specific lifecycle details:
 > `simulation.ts` is now just `strategyFor(player.botType).decide(state, player,
 > player.botMemory)`; the code below lives in `botStrategy.ts` as `ramblerDecide`.
 > The Surveyor's procedure is in
-> [Archetype: the Surveyor](#archetype-the-surveyor-the-goal-oriented-farmer-red--green).
+> [Archetype: the Surveyor](#archetype-the-surveyor-the-goal-oriented-farmer-green).
 
 ```ts
 function ramblerDecide(state: GameState, player: PlayerState): Direction
@@ -159,7 +206,7 @@ at defaults:
 
 A **Rambler**'s life cycles through two states, gated purely on trail length (the
 **Surveyor** has its own `extend` / `return` cycle — see
-[its archetype section](#archetype-the-surveyor-the-goal-oriented-farmer-red--green)):
+[its archetype section](#archetype-the-surveyor-the-goal-oriented-farmer-green)):
 
 | Phase | Condition | Behaviour |
 | --- | --- | --- |
@@ -187,7 +234,10 @@ the plan's [Open questions](../land-grab.md#open-questions).
 Scoped to the **Rambler**. The AI is intentionally minimal: **no model of the other
 players**, **no lookahead past one cell**. The Surveyor chips at the first three of
 these — a hard exposure cap, a "don't step next to a rival head" guard, and an early
-return when a rival closes — but still has no real offence and no multi-cell search. In
+return when a rival closes — but still has no real offence and no multi-cell search. The
+**Invader** breaks the first two outright: it *is* offence, it tracks a specific rival's
+head and wake, and it predicts one tick ahead to time its dodge (`wouldStandOff` plus the
+`hunt → dodge → cut` phase machine). It still has no search deeper than that. In
 particular the Rambler has:
 
 - **No offence.** It never steers toward an opponent's trail to cut them, even though a
@@ -201,19 +251,22 @@ particular the Rambler has:
 - **No capture-area optimisation.** Once homesick it takes the shortest path back, not
   the path that would enclose the most ground.
 - **No collision prediction.** Move resolution is order-dependent (`state.playerOrder`),
-  and the bot doesn't account for where anyone else will be after this tick.
+  and the bot doesn't account for where anyone else will be after this tick — beyond the
+  shared `wouldStandOff` guard that keeps it from driving into a frozen face-off.
 
 This is by design — Phase 0 only needs bots good enough to exercise the capture-fill and
-split-resolution algorithms, not to be challenging opponents.
+split-resolution algorithms, not to be challenging opponents. The Invader is the first
+archetype written to actually pressure the human.
 
 ## Bot types: solution architecting
 
-> **Status:** Phases 2–4 have landed — see [Rollout plan](#rollout-plan). The
+> **Status:** Phases 2–5 have landed — see [Rollout plan](#rollout-plan). The
 > `BotStrategy` interface, the `BOT_STRATEGIES` registry, the `decideBotFacing`
 > dispatcher and the per-bot `botMemory` bag live in
 > `src/features/landGrab/botStrategy.ts`; `"rambler"` (today's roamer, moved there
-> verbatim) and `"surveyor"` (`surveyorStrategy.ts`, the gradual-looping farmer) are
-> both registered. Red and Green run `"surveyor"`; Yellow stays `"rambler"`. The
+> verbatim), `"surveyor"` (`surveyorStrategy.ts`, the gradual-looping farmer) and
+> `"invader"` (`invaderStrategy.ts`, the head-on raider) are all registered. The default
+> match runs one of each: Yellow `"rambler"`, Red `"invader"`, Green `"surveyor"`. The
 > Profiles panel names each driven card's archetype, renders only that archetype's
 > `fields`, and has a per-card **Archetype** dropdown that hot-swaps the strategy
 > mid-match (rebuilding the bot's `botMemory`). Only [later archetypes](#later-archetypes-sketch)
@@ -345,7 +398,7 @@ show sliders they don't use.
 | **Weaknesses under the new rules** | No consolidation (never encloses a big pocket). No offence — walks past cuttable trails. No defence — trails an exposed wake through contested water. Never exploits its own bridges. Tends to *plateau* in cell count rather than push toward a board win. |
 | **Assignment** | **The Yellow boat** (`bot-yellow`, labelled "Yellow Rambler"). `botType: "rambler"`, and the default when `botType` is omitted, so every existing `PlayerConfig` and test keeps its current behaviour. |
 
-### Archetype: the Surveyor (the goal-oriented farmer; Red & Green)
+### Archetype: the Surveyor (the goal-oriented farmer; Green)
 
 The "grow one safe blob outward from home" bot. `src/features/landGrab/surveyorStrategy.ts`,
 covered by `src/test/landGrabSurveyorStrategy.test.ts`.
@@ -435,10 +488,93 @@ tie); and the per-loop `aim` rotation means consecutive loops sweep different se
 rather than re-laying the same spike. `stuckTicks` is a last-resort "walk home and start
 over" if the frontier is genuinely unreachable.
 
-**Assignment:** **the Red and Green boats** (`bot-red` / `bot-green`, labelled "Red
-Surveyor" / "Green Surveyor") → `botType: "surveyor"` in `PLAYER_CONFIGS`. Yellow is
-explicitly `botType: "rambler"`, so a default match is "one roamer vs. two farmers vs.
-the human".
+**Assignment:** **the Green boat** (`bot-green`, labelled "Green Surveyor") →
+`botType: "surveyor"` in `PLAYER_CONFIGS`. Red runs the
+[Invader](#archetype-the-invader-the-raider-red) and Yellow the Rambler, so a default
+match is one of each archetype vs. the human. (The `computeAim` centre bias still applies
+whenever two Surveyors *do* share a board — e.g. after switching another card to Surveyor.)
+
+### Archetype: the Invader (the raider; Red)
+
+The offensive archetype — the [Privateer](#later-archetypes-sketch) sketch, built out.
+`src/features/landGrab/invaderStrategy.ts`, covered by
+`src/test/landGrabInvaderStrategy.test.ts`.
+
+| | |
+| --- | --- |
+| **Goal** | Sink rivals, don't farm. Win by capturing boats, not by enclosing ground. |
+| **Core idea** | A pure ram can't win a face-off — [the head-on stand-off](#head-on-stand-off) freezes both boats. So the Invader *uses* the stand-off: line up nose-to-nose with a target, then **juke sideways one tick before contact** and curl back onto the wake the target lays as it slides past. That cut is a full capture + bridge the frozen ram could never land. |
+| **Emergent play** | A boat that ignores territory and chases people. It picks the nearest living rival, mirrors onto its row/column, feints straight in, dodges, and cuts — or, if the cut doesn't land, peels home to regroup and re-targets. It turns the Surveyor's centre-ward growth (and any boat that sails a long exposed wake) into a target-rich lane. |
+
+**Decision procedure** (`invaderDecide`) — greedy one-cell lookahead, argmax over all four
+directions, with a four-phase objective in `botMemory`:
+
+1. **Memory:** `{ type: "invader", phase, targetId, axis, dodgeStepsLeft, recent: Vec2[],
+   commitTicks }`, rebuilt by `createInvaderMemory()` on spawn and every respawn. `recent`
+   is the last 8 head cells (anti-backtrack / anti-orbit, same as the Surveyor).
+2. **Target selection:** while `hunt`ing or `regroup`ing, `targetId` is re-pointed at the
+   nearest living rival head every tick (`nearestLivingRival`). Once `dodge`/`cut` start it
+   stays locked to that rival (though *any* rival wake under the next step is still taken).
+3. **Phase arbitration** (top of the tick, mutates memory):
+   - **`hunt`** → **`dodge`** when the target shares our row or column (`alignmentAxis`),
+     the along-line gap is `1 … engageDistance`, and our facing points at it. Captures the
+     `axis` and sets `dodgeStepsLeft = dodgeDistance`. If we never line up within
+     `commitLimit × 2` ticks → `regroup`.
+   - **`dodge`** decrements `dodgeStepsLeft`; at 0 → **`cut`**.
+   - **`cut`** → **`regroup`** after `commitLimit` ticks with no capture.
+   - **`regroup`** → **`hunt`** once the wake is banked and the head is back on owned land.
+4. **Scoring** (`score(dir)`), built so there's always a move:
+   - off-board → `offBoardPenalty`; a move `wouldStandOff` → `offBoardPenalty` (never drive
+     *into* the freeze); the came-from cell → `BACKTRACK_PENALTY` (−300); a `recent` cell →
+     a recency-scaled revisit penalty.
+   - **Any rival wake under `next`** → `CUT_REWARD` (+60), `+TARGET_CUT_BONUS` if it's the
+     hunted target. This dominates every phase — an opportunistic cut is never passed up.
+   - **`hunt`:** `+ALIGN_PULL` per step that shrinks the offset onto the target's line,
+     `+CLOSE_PULL` per step that closes the remaining distance, a small neutral-water
+     bonus, a faint `homePull` leash, and `jitter`.
+   - **`dodge`:** `+DODGE_PERP` for a step perpendicular to `axis`, `−DODGE_PERP` for one
+     along it — so the boat slides off the collision line.
+   - **`cut`:** `+CUT_SEEK` per step of progress toward the nearest rival wake
+     (`nearestRivalTrailDistance`, bounded by `cutSearchRadius`); if there's none in range
+     it just drifts and `commitLimit` sends it home.
+   - **`regroup`:** `−Manhattan(next, home)` beeline, `+closeLoopReward + BANK_BONUS` for
+     the step that banks a live wake onto owned land.
+
+**Pure helpers** (exported from `invaderStrategy.ts`, unit-tested directly):
+
+- `nearestLivingRival(state, player)` — the closest living opponent `PlayerState` by head
+  Manhattan distance; `null` if alone.
+- `alignmentAxis(a, b)` — `"row"` / `"col"` / `null` for two heads' shared line.
+- `nearestRivalTrailDistance(grid, playerId, cell, maxRadius?)` — bounded BFS to the
+  nearest wake cell *not* owned by `playerId`; `Infinity` past the cap or off-board.
+
+Plus `wouldStandOff` / `isStandoff` / `intendedNext` from
+[`standoff.ts`](#head-on-stand-off), shared with the other scorers and `stepGame`.
+
+Weights (`CUT_REWARD`, `ALIGN_PULL`, `CLOSE_PULL`, `DODGE_PERP`, `CUT_SEEK`,
+`BACKTRACK_PENALTY`, `REVISIT_WEIGHT`, `BANK_BONUS`, `OWN_TRAIL_CROSS`,
+`TARGET_CUT_BONUS`) are module constants in `invaderStrategy.ts`, not sliders.
+
+**Knobs** — four fields on the flat `BotProfile` (`INVADER_EXTRA_FIELDS`);
+`INVADER_PROFILE_FIELDS` = those four plus the shared movement knobs the scorer borrows
+(`neutralBonus`, `jitter`, `homePull`, `closeLoopReward`, `offBoardPenalty`):
+
+| Field | Default | Effect |
+| --- | --- | --- |
+| `engageDistance` | `3` | Along-line gap to the target at which `hunt` flips to `dodge`. Lower → later, riskier juke. |
+| `dodgeDistance` | `1` | Perpendicular steps the juke lasts before `cut`. Wider → more room, slower cut. |
+| `cutSearchRadius` | `4` | How far `cut` will chase a rival wake before giving up. |
+| `commitLimit` | `10` | Hard cap on ticks in one phase before falling back to `regroup` — the anti-deadlock guard. |
+
+**Why it can't deadlock:** every phase has a `commitTicks → regroup` escape except
+`regroup` itself, which is a monotone beeline home; `dodge` counts down to `cut`; the
+came-from ban + revisit penalty kill 2-cell orbits; and `wouldStandOff` stops it stalling
+nose-to-nose. Worst case it loops `hunt → regroup → hunt` re-targeting, always moving.
+
+**Assignment:** **the Red boat** (`bot-red`, relabelled "Red Invader") →
+`botType: "invader"` in `PLAYER_CONFIGS` — Yellow keeps the Rambler and Green the
+Surveyor, so the default match runs one of each. Any archetype is one Archetype-dropdown
+click away on any card.
 
 ### Rollout plan
 
@@ -461,9 +597,10 @@ the human".
    widened `BotType`/`BotMemory` and registered `surveyor`; `createBotMemory` became a
    `switch`. `BotProfile` gained the four knobs (union default in `DEFAULT_BOT_PROFILE`),
    with `SURVEYOR_EXTRA_FIELDS` / `SURVEYOR_PROFILE_FIELDS` in `botProfile.ts`.
-   `PLAYER_CONFIGS`: Red and Green `botType: "surveyor"`, Yellow explicit `"rambler"`.
-   `src/test/landGrabSurveyorStrategy.test.ts` covers the helpers, the wiring, a
-   no-two-cell-toggle regression check, and a two-Surveyor-match-resolves check.
+   `PLAYER_CONFIGS`: Red and Green `botType: "surveyor"`, Yellow explicit `"rambler"` (Red
+   later reassigned to `"invader"` in Phase 5). `src/test/landGrabSurveyorStrategy.test.ts`
+   covers the helpers, the wiring, a no-two-cell-toggle regression check, and a
+   two-Surveyor-match-resolves check.
 4. **Panel support.** ✅ Landed. `BotProfilePanel` takes a `botTypes` map + an
    `onBotTypeChange` callback; each driven card carries an archetype badge, an
    **Archetype** `<select>` (options from `BOT_STRATEGIES`), a one-line blurb, and the
@@ -474,7 +611,18 @@ the human".
    override so **Restart** keeps it. Cards get `data-testid="bot-card-<id>"`;
    `e2e/landGrabControls.spec.ts` exercises the swap. A human card shows the picker only
    on autopilot (an autopiloted human then runs the chosen archetype).
-5. **Later archetypes** (below), once the registry has proven out.
+5. **Implement `invader`.** ✅ Landed alongside the [head-on stand-off](#head-on-stand-off)
+   movement rule. New `standoff.ts` (`intendedNext` / `isStandoff` / `wouldStandOff`),
+   shared by `stepGame` and all three scorers so no bot drives into a frozen face-off.
+   `invaderStrategy.ts` holds the `BotStrategy`, `InvaderMemory` (`phase`, `targetId`,
+   `axis`, `dodgeStepsLeft`, `recent`, `commitTicks`), `createInvaderMemory`, and three
+   exported pure helpers; `botStrategy.ts` widened `BotType`/`BotMemory` and registered
+   `invader`. `BotProfile` gained four knobs (`INVADER_EXTRA_FIELDS` /
+   `INVADER_PROFILE_FIELDS`). `PLAYER_CONFIGS`: Red → `botType: "invader"` (relabelled
+   "Red Invader"), reverting Red's Phase-3 Surveyor assignment; Yellow stays Rambler,
+   Green stays Surveyor, so the default match is one of each. Covered by
+   `src/test/landGrabInvaderStrategy.test.ts` and `src/test/landGrabStandoff.test.ts`.
+6. **Later archetypes** (below), once the registry has proven out.
 
 **Game records:** `LandGrabPlayerRecord` could gain `botType` (schema bump to `2`, old
 rows still load and just lack the field). Still deferred — the current records viewer is
@@ -483,13 +631,12 @@ display-only and doesn't surface archetype.
 ### Later archetypes (sketch)
 
 Not planned for this pass — listed so the registry interface is designed with room for
-them.
+them. (The **Privateer** sketch shipped as the [Invader](#archetype-the-invader-the-raider-red).)
 
 | Archetype | Goal | One-line mechanism | Exercises |
 | --- | --- | --- | --- |
-| **Privateer** | Offence. Win by cutting, not enclosing. | Score toward the nearest rival wake; intercept its projected next cell; only loop home when no cut is reachable. | Trail-cut capture + bridge, third-party split resolution. |
 | **Blockader** | Defence / denial. | Hug and wall off a choke so rivals can't expand past it; tiny loops, never far from home. | Long thin territory strips, split resolution when a strip is cut. |
-| **Opportunist** | Meta. | Run Surveyor, but switch to Privateer scoring for a few ticks whenever a rival wake is short-and-close. | Strategy switching, `botMemory` phase changes. |
+| **Opportunist** | Meta. | Run Surveyor, but switch to Invader scoring for a few ticks whenever a rival wake is short-and-close. | Strategy switching, `botMemory` phase changes. |
 
 ## Tuning them live in the demo
 
@@ -506,8 +653,8 @@ The **Profiles** button opens a panel with one card per player:
   `PlayerConfig.autopilot`) — the way to watch a fair four-bot match, or to A/B a profile
   against the three defaults.
 - **Each bot** (and **You** on autopilot) — an **Archetype** dropdown (Rambler /
-  Surveyor) with a badge and one-line blurb, then a slider per field the chosen
-  archetype reads (`strategyFor(botType).fields` — so a Rambler card and a Surveyor card
+  Surveyor / Invader) with a badge and one-line blurb, then a slider per field the chosen
+  archetype reads (`strategyFor(botType).fields` — so a Rambler, Surveyor and Invader card
   show different sliders). Edits apply on the **next tick**, no restart: the Phaser tick
   loop copies the React-owned `profiles` / `autopilot` / `botTypes` / `rules` onto the
   live `GameState` before each `stepGame`, rebuilding a bot's `botMemory` when its
@@ -519,10 +666,11 @@ sits at the top of the panel.
 
 ## Tuning knobs
 
-Per-player, on `PlayerState.profile` (`src/features/landGrab/botProfile.ts`). Both
+Per-player, on `PlayerState.profile` (`src/features/landGrab/botProfile.ts`). All three
 archetypes share one flat `BotProfile`; each `BotStrategy.fields` lists the subset its
 scorer reads (`BOT_PROFILE_FIELDS` for the Rambler, `SURVEYOR_PROFILE_FIELDS` for the
-Surveyor), and the panel renders exactly that subset on each driven card.
+Surveyor, `INVADER_PROFILE_FIELDS` for the Invader), and the panel renders exactly that
+subset on each driven card.
 
 **Rambler fields** (also read by the Surveyor except `homesickTrailLength`):
 
@@ -544,6 +692,16 @@ Surveyor), and the panel renders exactly that subset on each driven card.
 | `targetTrailLength` | `10` | Wake length that triggers the fold-back / return leg. Higher → bigger loops, more exposure. |
 | `frontierHugBonus` | `3` | Pull toward laying the wake one cell outside own territory, so the closed loop encloses a thick strip. |
 | `rivalAvoidRadius` | `3` | Bail straight to the return leg once a rival head gets this close (Manhattan). |
+
+**Invader-only fields** (`INVADER_EXTRA_FIELDS`; shown only on an Invader card, alongside
+the borrowed `neutralBonus` / `jitter` / `homePull` / `closeLoopReward` / `offBoardPenalty`):
+
+| `BotProfile` field | Default | Effect |
+| --- | --- | --- |
+| `engageDistance` | `3` | Along-line gap to the hunted target at which `hunt` flips to `dodge`. Lower → later, riskier juke. |
+| `dodgeDistance` | `1` | Perpendicular steps the sideways juke lasts before switching to `cut`. Wider → more room, slower cut. |
+| `cutSearchRadius` | `4` | How far the `cut` phase chases the target's fresh wake before bailing to `regroup`. |
+| `commitLimit` | `10` | Hard cap on ticks in any one phase before falling back to `regroup` — the anti-deadlock guard. |
 
 Match- and presentation-level:
 

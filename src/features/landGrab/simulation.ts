@@ -3,6 +3,7 @@ import { resolveTerritorySplit } from "./splitResolution";
 import { cloneProfile, DEFAULT_BOT_PROFILE, type BotProfile } from "./botProfile";
 import { DELTA, OPPOSITE } from "./geometry";
 import { createBotMemory, DEFAULT_BOT_TYPE, strategyFor, type BotMemory, type BotType } from "./botStrategy";
+import { intendedNext, isStandoff } from "./standoff";
 import type { Direction, Vec2 } from "./types";
 
 export const BASE_RADIUS = 1;
@@ -290,23 +291,14 @@ export function stepGame(state: GameState): GameState {
       const player = players[id];
       if (!player.alive || !player.hasStarted) continue;
       const facing = player.queuedFacing ?? player.facing;
-      intents.set(id, {
-        head: player.head,
-        next: { row: player.head.row + DELTA[facing].row, col: player.head.col + DELTA[facing].col },
-      });
+      intents.set(id, { head: player.head, next: intendedNext(player.head, facing) });
     }
     const ids = [...intents.keys()];
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) {
         const a = intents.get(ids[i])!;
         const b = intents.get(ids[j])!;
-        const sameCell = a.next.row === b.next.row && a.next.col === b.next.col;
-        const swap =
-          a.next.row === b.head.row &&
-          a.next.col === b.head.col &&
-          b.next.row === a.head.row &&
-          b.next.col === a.head.col;
-        if (sameCell || swap) {
+        if (isStandoff(a.head, a.next, b.head, b.next)) {
           standoff.add(ids[i]);
           standoff.add(ids[j]);
         }

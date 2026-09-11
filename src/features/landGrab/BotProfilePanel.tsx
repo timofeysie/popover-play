@@ -15,6 +15,7 @@ function formatValue(value: number): string {
 const ARCHETYPE_BLURB: Record<BotType, string> = {
   rambler: "Greedy roamer — strikes out into open water, then beelines home to bank a small loop.",
   surveyor: "Territory farmer — hugs its own frontier one cell out and folds in short, chunky loops.",
+  invader: "Raider — hunts a rival into a head-on stand-off, then jukes aside and cuts their wake as they pass.",
 };
 
 /** The fixed rules a keyboard-controlled human plays by — shown read-only. */

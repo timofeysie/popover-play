@@ -1,5 +1,6 @@
 import { DEFAULT_BOT_PROFILE, SURVEYOR_PROFILE_FIELDS } from "./botProfile";
 import { ALL_DIRECTIONS, DELTA } from "./geometry";
+import { wouldStandOff } from "./standoff";
 import type { CellState } from "./grid";
 import type { BotStrategy } from "./botStrategy";
 import type { GameState, PlayerState } from "./simulation";
@@ -310,6 +311,10 @@ function surveyorDecide(state: GameState, player: PlayerState, memory: SurveyorM
   function score(dir: Direction): number {
     const next = { row: head.row + DELTA[dir].row, col: head.col + DELTA[dir].col };
     if (!inBounds(state.rowCount, state.colCount, next)) return p.offBoardPenalty;
+    // A head-on stand-off with another boat is frozen by stepGame — a dead tick,
+    // same as walking into the wall. Steer around it (this is also what keeps two
+    // Surveyors meeting nose-to-nose from locking up forever).
+    if (wouldStandOff(state, player, next)) return p.offBoardPenalty;
     // Never walk straight back onto the cell we just left — this is what stops the
     // two-cell toggle. Ranked below every real move but above going off the board.
     if (cameFrom && sameCell(cameFrom, next)) return BACKTRACK_PENALTY;

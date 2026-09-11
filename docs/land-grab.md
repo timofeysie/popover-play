@@ -103,6 +103,7 @@ Resolved player-by-player in a fixed order each tick:
 | **An opponent's trail** | **You cut them — and it counts as a capture.** Their *entire* wake, your *entire* wake, and every cell they still owned all flip to your colour, welded into one connected bridge from your land to the ground you just seized (`resolveCapture` also fills any pocket the two wakes enclosed). Your trail clears; your head sits on the cut cell (now yours); your capture count increments. The victim is sunk and must respawn. |
 | **An opponent's territory** | Currently overwritten with your trail — you can plow straight through enemy land, turning each crossed cell into your wake. (The plan wanted this treated as a wall; the demo does not do that yet.) |
 | **Off the board edge** | **Not a death.** You hold position for the tick, still facing the wall, so you keep sitting still until you steer to a direction that stays on the board (a bot re-picks next tick). |
+| **Head-on with another boat** | **Neither captures.** When two boats' moves would collide this tick — they'd swap cells driving straight at each other, or both push into the same cell — `stepGame` freezes *both*: no move, no trail laid, no trail cut. They stay blocked until one steers away. So a face-off can't be won by ramming; you have to make the other boat flinch (or side-step and cut their wake as they pass — the Invader bot's whole game). |
 
 ### Capture fill & territory splits
 
@@ -184,7 +185,7 @@ It also writes a **game record** — there's no backend yet, so `saveGameRecord`
   "board": { "rows": 16, "cols": 24, "totalCells": 384 },
   "rules": { "respawnDelayTicks": 12 },
   "winner": {
-    "id": "bot-red", "label": "Red Surveyor", "color": "#f87171",
+    "id": "bot-red", "label": "Red Invader", "color": "#f87171",
     "isBot": true, "autopilot": false,
     "ownedCount": 384, "ownedFraction": 1,       // held at the final tick
     "peakOwnedCount": 384, "peakOwnedFraction": 1, // high-water mark over the match
@@ -203,12 +204,16 @@ Full field-by-field reference: [`docs/land-grab/records.md`](./land-grab/records
 ### Bots
 
 Each tick, every living bot scores its candidate directions (all four except a straight
-reversal) and takes the best. There are two **archetypes**, dispatched by
-`strategyFor(player.botType)` (`src/features/landGrab/botStrategy.ts`): the **Rambler**
-(the Yellow boat, and the default) described below, and the **Surveyor** (the Red and
-Green boats), a goal-oriented farmer that fans short loops out from its frontier toward a
-rotating, centre-biased target so its blob grows evenly and two Surveyors meet in the
-middle. The Rambler's scorer:
+reversal) and takes the best. There are three **archetypes**, dispatched by
+`strategyFor(player.botType)` (`src/features/landGrab/botStrategy.ts`); the default match
+runs one of each — **Rambler** (Yellow), **Invader** (Red), **Surveyor** (Green) — plus
+the human. The **Rambler** (the default archetype) is described below. The **Surveyor** is
+a goal-oriented farmer that fans short loops out from its frontier toward a rotating,
+centre-biased target so its blob grows evenly and two Surveyors meet in the middle. The
+**Invader** is a raider that hunts the nearest rival into a head-on stand-off, then jukes
+sideways and curls back onto their wake to cut them. All three score a move into a
+head-on stand-off like the board edge — a dead tick — so bots peel out of a face-off
+instead of locking up. The Rambler's scorer:
 
 - **Off the board** → heavily penalised (it would only waste a tick holding still).
 - **Onto its own trail** → just clear path once homesick; avoided while exploring so the
@@ -222,7 +227,9 @@ middle. The Rambler's scorer:
 Net behaviour: a Rambler sails out into open water, then after roughly nine cells of wake
 heads back to close its loop and bank a modest capture; a Surveyor fans loops from its
 frontier toward the board centre, growing a chunky blob that eventually collides with a
-rival's so the match resolves.
+rival's so the match resolves; an Invader ignores territory almost entirely — it closes
+on a rival, lines up nose-to-nose, dodges one tick before the stand-off and takes the cut
+as they slide past, then regroups home and picks a new target.
 
 Each scoring number is a field of a per-player **`BotProfile`**
 (`src/features/landGrab/botProfile.ts`); all players start on `DEFAULT_BOT_PROFILE` and
@@ -238,9 +245,10 @@ including why a stationary player at one corner biases the standings.
   advances exactly one tick while paused; a **Speed** selector runs the loop at
   0.25×–4×. None of these change the simulation, only how often it steps.
 - **Profiles** opens a panel with a card per player: a per-card **Archetype** dropdown
-  (Rambler / Surveyor, hot-swappable mid-match), live sliders for the `BotProfile` fields
-  that archetype reads, the match-level respawn delay, per-card and global **Reset**, and
-  an **Autopilot** toggle on *You* that hands your boat to the chosen archetype's scorer.
+  (Rambler / Surveyor / Invader, hot-swappable mid-match), live sliders for the
+  `BotProfile` fields that archetype reads, the match-level respawn delay, per-card and
+  global **Reset**, and an **Autopilot** toggle on *You* that hands your boat to the
+  chosen archetype's scorer.
 - **Full screen** (in the leaderboard panel) expands the grid to fill the window;
   because the cell count changes, toggling restarts the match. **Esc** exits.
 - **Game over** — when the match is decided ([above](#match-end--game-records)) the loop

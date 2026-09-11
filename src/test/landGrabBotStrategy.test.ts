@@ -61,9 +61,13 @@ describe("bot strategy wiring through the simulation", () => {
       { id: "bot2", label: "Bot 2", color: 0xfacc15, isBot: true },
     ];
     let state = createInitialGameState(12, 12, configs);
-    const start = { ...state.players.bot1.head };
-    for (let i = 0; i < 40; i++) state = stepGame(state);
-    expect(state.players.bot1.head).not.toEqual(start); // moved on its own
+    const start = `${state.players.bot1.head.row},${state.players.bot1.head.col}`;
+    let everMoved = false;
+    for (let i = 0; i < 40; i++) {
+      state = stepGame(state);
+      if (`${state.players.bot1.head.row},${state.players.bot1.head.col}` !== start) everMoved = true;
+    }
+    expect(everMoved).toBe(true); // drove itself off the base at some point (a respawn can land it back home)
     for (const p of Object.values(state.players)) {
       expect(Number.isFinite(p.ownedCount)).toBe(true);
     }

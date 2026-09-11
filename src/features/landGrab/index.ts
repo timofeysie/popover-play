@@ -6,6 +6,8 @@ export {
   BOT_PROFILE_FIELDS,
   SURVEYOR_EXTRA_FIELDS,
   SURVEYOR_PROFILE_FIELDS,
+  INVADER_EXTRA_FIELDS,
+  INVADER_PROFILE_FIELDS,
   cloneProfile,
 } from "./botProfile";
 export type { BotProfile, BotProfileField } from "./botProfile";
@@ -20,6 +22,13 @@ export {
   nearestRivalHeadDistance,
 } from "./surveyorStrategy";
 export type { SurveyorMemory } from "./surveyorStrategy";
+export {
+  createInvaderMemory,
+  nearestLivingRival,
+  alignmentAxis,
+  nearestRivalTrailDistance,
+} from "./invaderStrategy";
+export type { InvaderMemory } from "./invaderStrategy";
 export {
   buildGameRecord,
   saveGameRecord,

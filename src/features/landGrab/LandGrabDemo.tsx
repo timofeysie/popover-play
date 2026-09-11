@@ -60,7 +60,7 @@ function computeFullScreenDims(): GridDims {
 
 const PLAYER_CONFIGS: PlayerConfig[] = [
   { id: "you", label: "You", color: 0x38bdf8, isBot: false },
-  { id: "bot-red", label: "Red Surveyor", color: 0xf87171, isBot: true, botType: "surveyor" },
+  { id: "bot-red", label: "Red Invader", color: 0xf87171, isBot: true, botType: "invader" },
   { id: "bot-yellow", label: "Yellow Rambler", color: 0xfacc15, isBot: true, botType: "rambler" },
   { id: "bot-green", label: "Green Surveyor", color: 0x4ade80, isBot: true, botType: "surveyor" },
 ];

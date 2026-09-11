@@ -190,18 +190,24 @@ describe("surveyor through the simulation", () => {
     const startOwned = state.players.surv.ownedCount;
     const seenHeads = new Set<string>();
     let peakOwned = startOwned;
+    // `botMemory` is rebuilt fresh (loopCount back to 0) on every respawn, so a
+    // Surveyor that banks a loop and is later sunk by the Rambler would read back
+    // `loopCount === 0` at the end even though it plainly looped — track the max
+    // seen across the run instead of trusting the final snapshot.
+    let maxLoopCount = 0;
 
     for (let i = 0; i < 300 && !state.winnerId; i++) {
       state = stepGame(state);
       seenHeads.add(`${state.players.surv.head.row},${state.players.surv.head.col}`);
       peakOwned = Math.max(peakOwned, state.players.surv.ownedCount);
+      maxLoopCount = Math.max(maxLoopCount, (state.players.surv.botMemory as { loopCount: number }).loopCount);
     }
 
     expect(seenHeads.size).toBeGreaterThan(8); // moved around on its own
     expect(peakOwned).toBeGreaterThan(startOwned); // closed at least one loop along the way
     const mem = state.players.surv.botMemory as { phase: string; loopCount: number };
     expect(["extend", "return"]).toContain(mem.phase);
-    expect(mem.loopCount).toBeGreaterThanOrEqual(1); // banked at least one loop
+    expect(maxLoopCount).toBeGreaterThanOrEqual(1); // banked at least one loop
     for (const p of Object.values(state.players)) {
       expect(Number.isFinite(p.ownedCount)).toBe(true);
     }
@@ -257,7 +263,7 @@ describe("surveyor through the simulation", () => {
     let state = createInitialGameState(16, 20, configs, { respawnDelayTicks: 6 });
     const heads: Record<string, string[]> = { s1: [], s2: [] };
 
-    for (let i = 0; i < 400 && !state.winnerId; i++) {
+    for (let i = 0; i < 600 && !state.winnerId; i++) {
       state = stepGame(state);
       for (const id of ["s1", "s2"]) {
         const player = state.players[id];

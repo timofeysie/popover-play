@@ -1,22 +1,24 @@
 import { BOT_PROFILE_FIELDS, DEFAULT_BOT_PROFILE, type BotProfile, type BotProfileField } from "./botProfile";
 import { ALL_DIRECTIONS, DELTA, OPPOSITE } from "./geometry";
+import { wouldStandOff } from "./standoff";
 import { createSurveyorMemory, surveyor, type SurveyorMemory } from "./surveyorStrategy";
+import { createInvaderMemory, invader, type InvaderMemory } from "./invaderStrategy";
 import type { GameState, PlayerState } from "./simulation";
 import type { Direction, Vec2 } from "./types";
 
 /**
  * Bot archetypes.
  *
- * Rollout in `docs/land-grab/bots.md`. Phase 2 landed the registry, the
- * `BotStrategy` interface, the dispatcher and the per-bot memory bag with only
- * `"rambler"` — today's greedy roamer, moved here verbatim — registered. Phase 3
- * adds `"surveyor"` (the gradual-looping territory farmer, in
- * `surveyorStrategy.ts`) as a second entry with no changes to this shape.
+ * Rollout in `docs/land-grab/bots.md`. Three registered: `"rambler"` (the original
+ * greedy roamer, moved here verbatim), `"surveyor"` (the gradual-looping territory
+ * farmer, in `surveyorStrategy.ts`), and `"invader"` (the raider that baits a
+ * head-on stand-off then cuts on the dodge, in `invaderStrategy.ts`). Each is its
+ * own module with its own `decide`, profile-field subset and memory shape.
  *
  * `simulation.ts` imports `strategyFor` / `createBotMemory` from here; this file
  * imports only *types* from `simulation.ts`, so there's no runtime cycle.
  */
-export type BotType = "rambler" | "surveyor";
+export type BotType = "rambler" | "surveyor" | "invader";
 
 /** Used whenever a `PlayerConfig` doesn't name an archetype. */
 export const DEFAULT_BOT_TYPE: BotType = "rambler";
@@ -28,9 +30,11 @@ export const DEFAULT_BOT_TYPE: BotType = "rambler";
  * in place rather than expect a fresh copy each tick.
  *
  * The rambler is stateless; the surveyor keeps its `phase`, a short trail of
- * recent head cells, and a stuck counter here (see `surveyorStrategy.ts`).
+ * recent head cells, and a stuck counter here (see `surveyorStrategy.ts`); the
+ * invader keeps its hunt/dodge/cut phase, current target and juke state (see
+ * `invaderStrategy.ts`).
  */
-export type BotMemory = { type: "rambler" } | SurveyorMemory;
+export type BotMemory = { type: "rambler" } | SurveyorMemory | InvaderMemory;
 
 export interface BotStrategy {
   type: BotType;
@@ -51,6 +55,8 @@ export function createBotMemory(type: BotType): BotMemory {
   switch (type) {
     case "surveyor":
       return createSurveyorMemory();
+    case "invader":
+      return createInvaderMemory();
     case "rambler":
     default:
       return { type: "rambler" };
@@ -79,6 +85,8 @@ function ramblerDecide(state: GameState, player: PlayerState): Direction {
     // Board edge is just a wall now (the mover holds position), so it's merely
     // wasteful, not fatal — rank it well below any real move but above suicide.
     if (!inBounds(state, next)) return p.offBoardPenalty;
+    // A head-on stand-off with another boat is frozen the same way — a dead tick.
+    if (wouldStandOff(state, player, next)) return p.offBoardPenalty;
     const cell = state.grid[next.row][next.col];
     const distanceToHome = Math.abs(next.row - player.home.row) + Math.abs(next.col - player.home.col);
     // Crossing our own wake no longer banks anything — the loop only closes back
@@ -117,7 +125,7 @@ const rambler: BotStrategy = {
   defaultProfile: DEFAULT_BOT_PROFILE,
 };
 
-export const BOT_STRATEGIES: Record<BotType, BotStrategy> = { rambler, surveyor };
+export const BOT_STRATEGIES: Record<BotType, BotStrategy> = { rambler, surveyor, invader };
 
 /** The strategy for `type`, falling back to the default archetype when it's unset. */
 export function strategyFor(type: BotType | undefined): BotStrategy {
