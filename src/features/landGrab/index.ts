@@ -39,7 +39,7 @@ export {
   GAME_RECORDS_STORAGE_KEY,
   MAX_STORED_GAME_RECORDS,
 } from "./gameRecord";
-export type { LandGrabGameRecord, LandGrabPlayerRecord } from "./gameRecord";
+export type { LandGrabGameRecord, LandGrabPlayerRecord, BuildGameRecordOptions } from "./gameRecord";
 export {
   createReplayLog,
   recordFrame,

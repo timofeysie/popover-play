@@ -19,10 +19,10 @@ describe("applyCaptureEvents", () => {
     expect(next).toEqual({ p1: ["p2", "old"], p2: [] });
   });
 
-  it("folds the victim's own chain in behind them, and clears the victim's", () => {
+  it("does not inherit the victim's own chain — it just scatters", () => {
     const chains: ChainMap = { p1: ["old-catch"], p2: ["ghost"] };
     const next = applyCaptureEvents(chains, [{ capturerId: "p1", victimId: "p2" }]);
-    expect(next).toEqual({ p1: ["p2", "ghost", "old-catch"], p2: [] });
+    expect(next).toEqual({ p1: ["p2", "old-catch"], p2: [] }); // "ghost" is gone, not folded in
   });
 
   it("allows the same id to appear more than once across repeated captures", () => {
@@ -32,13 +32,14 @@ describe("applyCaptureEvents", () => {
     expect(chains.p1).toEqual(["p2", "p2"]);
   });
 
-  it("applies multiple events in order", () => {
+  it("applies multiple events in order, without carrying a chain forward through a second capture", () => {
     const next = applyCaptureEvents({}, [
       { capturerId: "p1", victimId: "p2" },
       { capturerId: "p3", victimId: "p1" },
     ]);
-    // p3 captured p1 after p1 had already picked up p2 — p1's whole train follows.
-    expect(next).toEqual({ p1: [], p2: [], p3: ["p1", "p2"] });
+    // p3 captured p1 after p1 had already picked up p2 — but p1's chain resets
+    // on capture just like any other death, so p2 doesn't carry over to p3.
+    expect(next).toEqual({ p1: [], p2: [], p3: ["p1"] });
   });
 });
 

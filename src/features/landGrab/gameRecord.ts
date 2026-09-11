@@ -9,7 +9,7 @@ import type { BotProfile } from "./botProfile";
  */
 export interface LandGrabGameRecord {
   /** Bump if the shape below changes so old rows can be filtered out on read. */
-  schemaVersion: 2;
+  schemaVersion: 3;
   /** ISO-8601, when the match was recorded. */
   endedAt: string;
   winner: LandGrabPlayerRecord;
@@ -40,6 +40,13 @@ export interface LandGrabPlayerRecord {
   captures: number;
   /** Times a rival cut this player's trail and sank them — counted win or lose. */
   timesCaptured: number;
+  /**
+   * Most captured avatars this player had trailing them at once — their
+   * high-water mark on the display-only chain (`chainTrail.ts`). Resets to 0
+   * on death, so this is a streak record, not a running total; `0` if the
+   * match ended before `buildGameRecord` was given a chain-peaks snapshot.
+   */
+  peakChainLength: number;
   alive: boolean;
   /** The decision parameters this player was running when the match ended. */
   profile: BotProfile;
@@ -55,6 +62,7 @@ function hexColor(color: number): string {
 function toPlayerRecord(
   player: GameState["players"][string],
   totalCells: number,
+  peakChainLength: number,
 ): LandGrabPlayerRecord {
   return {
     id: player.id,
@@ -68,16 +76,29 @@ function toPlayerRecord(
     peakOwnedFraction: totalCells > 0 ? player.peakOwnedCount / totalCells : 0,
     captures: player.captures,
     timesCaptured: player.timesCaptured,
+    peakChainLength,
     alive: player.alive,
     profile: { ...player.profile },
   };
+}
+
+export interface BuildGameRecordOptions {
+  endedAt?: Date;
+  /**
+   * Each player's high-water mark on the display-only captured-avatar chain
+   * (`chainTrail.ts`), keyed by player id — the live game and replay track
+   * this outside `GameState`, so it has to be handed in explicitly. Missing
+   * or omitted entries record as `0`.
+   */
+  chainPeaks?: Record<string, number>;
 }
 
 /**
  * Turn a decided `GameState` (its `winnerId` set) into a storable record.
  * Throws if the match isn't actually over, so callers can't record a draw.
  */
-export function buildGameRecord(state: GameState, endedAt: Date = new Date()): LandGrabGameRecord {
+export function buildGameRecord(state: GameState, options: BuildGameRecordOptions = {}): LandGrabGameRecord {
+  const { endedAt = new Date(), chainPeaks = {} } = options;
   const winner = state.winnerId ? state.players[state.winnerId] : undefined;
   if (!winner) throw new Error("buildGameRecord: game state has no winner yet");
 
@@ -85,12 +106,12 @@ export function buildGameRecord(state: GameState, endedAt: Date = new Date()): L
   const players = state.playerOrder
     .map((id) => state.players[id])
     .filter(Boolean)
-    .map((player) => toPlayerRecord(player, totalCells));
+    .map((player) => toPlayerRecord(player, totalCells, chainPeaks[player.id] ?? 0));
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     endedAt: endedAt.toISOString(),
-    winner: toPlayerRecord(winner, totalCells),
+    winner: toPlayerRecord(winner, totalCells, chainPeaks[winner.id] ?? 0),
     players,
     ticks: state.tick,
     durationMs: state.tick * TICK_MS,
@@ -106,7 +127,7 @@ export function loadGameRecords(): LandGrabGameRecord[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((row): row is LandGrabGameRecord => row?.schemaVersion === 2);
+    return parsed.filter((row): row is LandGrabGameRecord => row?.schemaVersion === 3);
   } catch {
     return [];
   }

@@ -45,6 +45,9 @@ function Standing({ player, isWinner }: { player: LandGrabPlayerRecord; isWinner
       {player.timesCaptured > 0 && (
         <span className="tabular-nums text-destructive">· sunk {player.timesCaptured}×</span>
       )}
+      {player.peakChainLength > 0 && (
+        <span className="tabular-nums text-muted-foreground">· chain {player.peakChainLength}</span>
+      )}
     </span>
   );
 }

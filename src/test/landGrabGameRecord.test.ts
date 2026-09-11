@@ -45,9 +45,9 @@ function decidedState(): GameState {
 
 describe("buildGameRecord", () => {
   it("captures the winner, board, and timing", () => {
-    const record = buildGameRecord(decidedState(), new Date("2026-09-10T12:00:00.000Z"));
+    const record = buildGameRecord(decidedState(), { endedAt: new Date("2026-09-10T12:00:00.000Z") });
 
-    expect(record.schemaVersion).toBe(2);
+    expect(record.schemaVersion).toBe(3);
     expect(record.endedAt).toBe("2026-09-10T12:00:00.000Z");
     expect(record.ticks).toBe(437);
     expect(record.durationMs).toBe(437 * 160); // TICK_MS
@@ -84,6 +84,18 @@ describe("buildGameRecord", () => {
 
   it("throws if the game is not decided", () => {
     expect(() => buildGameRecord({ ...decidedState(), winnerId: null })).toThrow();
+  });
+
+  it("defaults peakChainLength to 0 when no chain-peaks snapshot is given", () => {
+    const record = buildGameRecord(decidedState());
+    expect(record.winner.peakChainLength).toBe(0);
+    expect(record.players.find((p) => p.id === "you")?.peakChainLength).toBe(0);
+  });
+
+  it("records each player's peak chain length from the given snapshot", () => {
+    const record = buildGameRecord(decidedState(), { chainPeaks: { "bot-red": 3, you: 1 } });
+    expect(record.winner.peakChainLength).toBe(3);
+    expect(record.players.find((p) => p.id === "you")?.peakChainLength).toBe(1);
   });
 });
 

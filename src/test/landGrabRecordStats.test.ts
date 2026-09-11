@@ -25,6 +25,7 @@ function player(
     peakOwnedFraction: peakOwnedCount / TOTAL_CELLS,
     captures: 0,
     timesCaptured: 0,
+    peakChainLength: 0,
     alive: false,
     profile: { ...DEFAULT_BOT_PROFILE },
     ...overrides,
@@ -39,7 +40,7 @@ function match(
   const winner = players.find((p) => p.id === winnerId);
   if (!winner) throw new Error(`test match has no player ${winnerId}`);
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     endedAt,
     winner,
     players,

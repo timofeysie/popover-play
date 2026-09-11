@@ -10,21 +10,27 @@ import type { Vec2 } from "./types";
  * thing two ways.
  */
 
-/** Ids of players trailing behind each player, nearest capture first. */
+/**
+ * Ids of players trailing behind each player, nearest capture first. Resets
+ * to `[]` the instant this player is themself captured — a captured player's
+ * own followers don't transfer to whoever caught them, they just scatter.
+ */
 export type ChainMap = Record<string, string[]>;
 
 /**
- * Fold one tick's capture events into a chain map: each victim (and anyone
- * already trailing them) moves to the front of their capturer's chain, and
- * the victim's own chain empties out. Apply events in the order they
- * occurred. The same id can legitimately appear more than once in a chain —
- * nothing dedupes a player who keeps recapturing the same rival.
+ * Fold one tick's capture events into a chain map: the victim joins the front
+ * of their capturer's chain, and the victim's own chain empties out —
+ * whatever they'd been trailing does *not* carry over to their capturer, it
+ * just resets, the same as it would if they'd died any other way. Apply
+ * events in the order they occurred. The same id can legitimately appear more
+ * than once in a chain — nothing dedupes a player who keeps recapturing the
+ * same rival.
  */
 export function applyCaptureEvents(chains: ChainMap, events: readonly CaptureEvent[]): ChainMap {
   if (events.length === 0) return chains;
   const next = { ...chains };
   for (const { capturerId, victimId } of events) {
-    next[capturerId] = [victimId, ...(next[victimId] ?? []), ...(next[capturerId] ?? [])];
+    next[capturerId] = [victimId, ...(next[capturerId] ?? [])];
     next[victimId] = [];
   }
   return next;

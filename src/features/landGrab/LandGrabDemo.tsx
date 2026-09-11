@@ -107,7 +107,8 @@ interface SceneData {
   autopilotRef: { current: Record<string, boolean> };
   botTypesRef: { current: Record<string, BotType> };
   rulesRef: { current: GameRules };
-  onTick: (state: GameState) => void;
+  /** `chainPeaks` is each player's high-water mark for the display-only captured-avatar chain so far this match. */
+  onTick: (state: GameState, chainPeaks: Record<string, number>) => void;
   cellSize: number;
 }
 
@@ -127,6 +128,8 @@ class LandGrabScene extends Phaser.Scene {
   private chains: ChainMap = {};
   /** Recent head positions per player, used to lay the trailing chain out along consecutive cells like a snake body. Reset on death. */
   private headHistory: Record<string, Vec2[]> = {};
+  /** Each player's high-water mark for `chains[id].length` this match — handed to `buildGameRecord` at game over. */
+  private chainPeaks: Record<string, number> = {};
 
   constructor() {
     super("land-grab");
@@ -187,7 +190,7 @@ class LandGrabScene extends Phaser.Scene {
 
         this.gameStateRef.current = stepGame(state);
         this.draw();
-        this.onTick(this.gameStateRef.current);
+        this.onTick(this.gameStateRef.current, this.chainPeaks);
       },
     });
   }
@@ -231,6 +234,10 @@ class LandGrabScene extends Phaser.Scene {
       this.chains,
       new Set(Object.values(state.players).filter((p) => p.alive).map((p) => p.id)),
     );
+    for (const id of Object.keys(state.players)) {
+      const length = this.chains[id]?.length ?? 0;
+      if (length > (this.chainPeaks[id] ?? 0)) this.chainPeaks[id] = length;
+    }
     for (const player of Object.values(state.players)) {
       if (!player.alive) {
         this.headHistory[player.id] = [];
@@ -479,13 +486,13 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
         botTypesRef,
         rulesRef,
         cellSize: dims.cell,
-        onTick: (state: GameState) => {
+        onTick: (state: GameState, chainPeaks: Record<string, number>) => {
           if (replayLogRef.current) recordFrame(replayLogRef.current, state);
           setPlayers({ ...state.players });
           setTick(state.tick);
           if (!hideControlsRef.current && state.winnerId && !recordedRef.current) {
             recordedRef.current = true;
-            const record = buildGameRecord(state);
+            const record = buildGameRecord(state, { chainPeaks });
             saveGameRecord(record);
             setGameOver(record);
             setReplay(replayLogRef.current);
@@ -730,6 +737,8 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
                     <dd className="tabular-nums text-foreground">{gameOver.winner.captures}</dd>
                     <dt>Winner sunk</dt>
                     <dd className="tabular-nums text-foreground">{gameOver.winner.timesCaptured}×</dd>
+                    <dt>Winner longest chain</dt>
+                    <dd className="tabular-nums text-foreground">{gameOver.winner.peakChainLength}</dd>
                   </dl>
                   <p className="text-xs">
                     Saved to this browser as a game record (<code>landgrab:game-records</code>).
