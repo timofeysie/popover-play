@@ -278,6 +278,42 @@ export function stepGame(state: GameState): GameState {
     }
   }
 
+  // Head-on stand-off. Players step one at a time below, so without this pass the
+  // first mover in a face-off just cuts the other's trail and captures them.
+  // Instead: when two boats would swap cells (driving straight at each other) or
+  // push into the same cell, neither captures — both hold position this tick and
+  // stay blocked until one of them steers a different way.
+  const standoff = new Set<string>();
+  {
+    const intents = new Map<string, { head: Vec2; next: Vec2 }>();
+    for (const id of state.playerOrder) {
+      const player = players[id];
+      if (!player.alive || !player.hasStarted) continue;
+      const facing = player.queuedFacing ?? player.facing;
+      intents.set(id, {
+        head: player.head,
+        next: { row: player.head.row + DELTA[facing].row, col: player.head.col + DELTA[facing].col },
+      });
+    }
+    const ids = [...intents.keys()];
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const a = intents.get(ids[i])!;
+        const b = intents.get(ids[j])!;
+        const sameCell = a.next.row === b.next.row && a.next.col === b.next.col;
+        const swap =
+          a.next.row === b.head.row &&
+          a.next.col === b.head.col &&
+          b.next.row === a.head.row &&
+          b.next.col === a.head.col;
+        if (sameCell || swap) {
+          standoff.add(ids[i]);
+          standoff.add(ids[j]);
+        }
+      }
+    }
+  }
+
   for (const id of state.playerOrder) {
     const player = players[id];
     if (!player.alive || !player.hasStarted) continue;
@@ -285,6 +321,13 @@ export function stepGame(state: GameState): GameState {
     const facing = player.queuedFacing ?? player.facing;
     player.facing = facing;
     player.queuedFacing = null;
+
+    if (standoff.has(id)) {
+      // Blocked by another boat head-on this tick: hold position, lay no trail,
+      // capture nothing. Facing still points at the other boat, so a human stays
+      // parked here until they steer elsewhere; a bot re-picks next tick.
+      continue;
+    }
 
     const next: Vec2 = { row: player.head.row + DELTA[facing].row, col: player.head.col + DELTA[facing].col };
 

@@ -428,6 +428,74 @@ describe("stepGame — winner detection", () => {
   });
 });
 
+describe("stepGame — head-on stand-off", () => {
+  const configs: PlayerConfig[] = [
+    { id: "p1", label: "You", color: 0x38bdf8, isBot: false },
+    { id: "p2", label: "Them", color: 0xf87171, isBot: false },
+  ];
+
+  /** Two non-bot boats sitting on their own land, heads adjacent along row 4. */
+  function faceOff(p1Facing: Direction, p2Facing: Direction, p1Head: number, p2Head: number) {
+    let state = createInitialGameState(9, 9, configs);
+    const grid = state.grid.map((row) => row.map((): CellState => ({ kind: "neutral" })));
+    for (let col = 1; col <= 3; col++) grid[4][col] = { kind: "territory", playerId: "p1" };
+    for (let col = 5; col <= 7; col++) grid[4][col] = { kind: "territory", playerId: "p2" };
+    state = {
+      ...state,
+      grid,
+      players: {
+        ...state.players,
+        p1: { ...state.players.p1, home: { row: 4, col: 2 }, head: { row: 4, col: p1Head }, facing: p1Facing, queuedFacing: null, trail: [], hasStarted: true },
+        p2: { ...state.players.p2, home: { row: 4, col: 6 }, head: { row: 4, col: p2Head }, facing: p2Facing, queuedFacing: null, trail: [], hasStarted: true },
+      },
+    };
+    return state;
+  }
+
+  it("blocks both boats when they drive straight at each other — neither captures", () => {
+    // p1 at (4,3) heading east, p2 at (4,4) heading west: they'd swap cells.
+    let state = faceOff("right", "left", 3, 4);
+    state = stepGame(state);
+
+    expect(state.players.p1.head).toEqual({ row: 4, col: 3 }); // held position
+    expect(state.players.p2.head).toEqual({ row: 4, col: 4 });
+    expect(state.players.p1.alive).toBe(true);
+    expect(state.players.p2.alive).toBe(true);
+    expect(state.players.p1.captures).toBe(0);
+    expect(state.players.p2.captures).toBe(0);
+    expect(state.players.p1.timesCaptured).toBe(0);
+    expect(state.players.p2.timesCaptured).toBe(0);
+    expect(state.players.p1.trail).toEqual([]);
+    expect(state.players.p2.trail).toEqual([]);
+  });
+
+  it("blocks both boats when they push into the same cell", () => {
+    // p1 at (4,3) and p2 at (4,5) both aiming for the empty cell (4,4).
+    let state = faceOff("right", "left", 3, 5);
+    state = stepGame(state);
+
+    expect(state.players.p1.head).toEqual({ row: 4, col: 3 });
+    expect(state.players.p2.head).toEqual({ row: 4, col: 5 });
+    expect(state.grid[4][4]).toEqual({ kind: "neutral" }); // nobody laid a trail there
+    expect(state.players.p1.alive).toBe(true);
+    expect(state.players.p2.alive).toBe(true);
+  });
+
+  it("clears the stand-off as soon as one boat steers away", () => {
+    let state = faceOff("right", "left", 3, 4);
+    state = stepGame(state); // blocked
+    expect(state.players.p1.head).toEqual({ row: 4, col: 3 });
+
+    setPlayerFacing(state, "p1", "up");
+    state = stepGame(state);
+
+    expect(state.players.p1.head).toEqual({ row: 3, col: 3 }); // free to move now
+    expect(state.players.p2.head).toEqual({ row: 4, col: 3 }); // p2 rolls forward into the vacated cell
+    expect(state.players.p1.alive).toBe(true);
+    expect(state.players.p2.alive).toBe(true);
+  });
+});
+
 describe("stepGame — bots", () => {
   it("runs many ticks with only bots on a small board without throwing", () => {
     const bots: PlayerConfig[] = [
