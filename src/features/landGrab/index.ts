@@ -70,6 +70,17 @@ export {
   USER_PROFILE_STORAGE_KEY,
 } from "./userProfile";
 export type { LandGrabUserProfile } from "./userProfile";
+export {
+  AVATAR_SIZE,
+  AVATAR_CELL_COUNT,
+  createEmptyAvatar,
+  isValidAvatarGrid,
+  isBlankAvatar,
+  resolveAvatar,
+} from "./pixelAvatar";
+export type { AvatarGrid } from "./pixelAvatar";
+export { PixelAvatarEditor } from "./PixelAvatarEditor";
+export type { PixelAvatarEditorProps } from "./PixelAvatarEditor";
 export { resolveCapture, createEmptyGrid, countOwnedCells } from "./grid";
 export type { CellState } from "./grid";
 export { resolveTerritorySplit } from "./splitResolution";

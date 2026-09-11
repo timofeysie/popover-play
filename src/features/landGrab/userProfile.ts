@@ -1,3 +1,5 @@
+import { resolveAvatar, type AvatarGrid } from "./pixelAvatar";
+
 /**
  * The local player's profile. Like `gameRecord`, there's no backend yet, so this
  * is just a single JSON blob in `localStorage`; swapping in a real API later only
@@ -8,6 +10,8 @@ export interface LandGrabUserProfile {
   schemaVersion: 1;
   /** What the human player is called in the UI. Never empty — see `resolveUsername`. */
   username: string;
+  /** Custom 8x8 pixel-art avatar, or `null` to use the plain color marker. Added after schemaVersion 1 shipped, so it's optional/absent on old blobs rather than forcing a version bump. */
+  avatar?: AvatarGrid | null;
 }
 
 export const USER_PROFILE_STORAGE_KEY = "landgrab:user-profile";
@@ -24,14 +28,18 @@ export function resolveUsername(raw: string): string {
 export function loadUserProfile(): LandGrabUserProfile {
   try {
     const raw = window.localStorage.getItem(USER_PROFILE_STORAGE_KEY);
-    if (!raw) return { schemaVersion: 1, username: DEFAULT_USERNAME };
+    if (!raw) return { schemaVersion: 1, username: DEFAULT_USERNAME, avatar: null };
     const parsed = JSON.parse(raw);
     if (parsed?.schemaVersion !== 1 || typeof parsed.username !== "string") {
-      return { schemaVersion: 1, username: DEFAULT_USERNAME };
+      return { schemaVersion: 1, username: DEFAULT_USERNAME, avatar: null };
     }
-    return { schemaVersion: 1, username: resolveUsername(parsed.username) };
+    return {
+      schemaVersion: 1,
+      username: resolveUsername(parsed.username),
+      avatar: resolveAvatar(parsed.avatar),
+    };
   } catch {
-    return { schemaVersion: 1, username: DEFAULT_USERNAME };
+    return { schemaVersion: 1, username: DEFAULT_USERNAME, avatar: null };
   }
 }
 

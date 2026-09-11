@@ -20,6 +20,7 @@ import { buildGameRecord, saveGameRecord, type LandGrabGameRecord } from "./game
 import { createReplayLog, recordFrame, type ReplayLog } from "./replayLog";
 import { LandGrabReplay } from "./LandGrabReplay";
 import { loadUserProfile, resolveUsername, saveUserProfile } from "./userProfile";
+import { AVATAR_SIZE, type AvatarGrid } from "./pixelAvatar";
 import type { Direction } from "./types";
 import {
   AlertDialog,
@@ -68,6 +69,9 @@ const PLAYER_CONFIGS: PlayerConfig[] = [
 ];
 
 const HUMAN_ID = "you";
+const AVATAR_TEXTURE_KEY = "land-grab-human-avatar";
+/** Physical pixels per avatar cell in the baked texture — kept blocky/crisp rather than smoothed on scale-up. */
+const AVATAR_TEXTURE_PIXEL_SIZE = 4;
 
 function makeInitialProfiles(): Record<string, BotProfile> {
   return Object.fromEntries(PLAYER_CONFIGS.map((c) => [c.id, cloneProfile(DEFAULT_BOT_PROFILE)]));
@@ -107,6 +111,8 @@ interface SceneData {
   autopilotRef: { current: Record<string, boolean> };
   botTypesRef: { current: Record<string, BotType> };
   rulesRef: { current: GameRules };
+  /** The human's custom head-marker sprite, or `null` to draw the plain color circle. */
+  avatarRef: { current: AvatarGrid | null };
   /** `chainPeaks` is each player's high-water mark for the display-only captured-avatar chain so far this match. */
   onTick: (state: GameState, chainPeaks: Record<string, number>) => void;
   cellSize: number;
@@ -119,10 +125,13 @@ class LandGrabScene extends Phaser.Scene {
   private autopilotRef!: SceneData["autopilotRef"];
   private botTypesRef!: SceneData["botTypesRef"];
   private rulesRef!: SceneData["rulesRef"];
+  private avatarRef!: SceneData["avatarRef"];
   private onTick!: SceneData["onTick"];
   private cellSize = CELL_SIZE;
   private graphics!: Phaser.GameObjects.Graphics;
-  private headMarkers: Phaser.GameObjects.Arc[] = [];
+  private headMarkers: Phaser.GameObjects.GameObject[] = [];
+  /** Serialized form of the avatar grid last baked into `AVATAR_TEXTURE_KEY`, so a same-avatar tick skips regenerating it. */
+  private bakedAvatarSignature: string | null = null;
   private chainMarkers: Phaser.GameObjects.Arc[] = [];
   /** Display-only: who's currently trailing whom, built from each tick's `captureEvents`. */
   private chains: ChainMap = {};
@@ -142,6 +151,7 @@ class LandGrabScene extends Phaser.Scene {
     this.autopilotRef = data.autopilotRef;
     this.botTypesRef = data.botTypesRef;
     this.rulesRef = data.rulesRef;
+    this.avatarRef = data.avatarRef;
     this.onTick = data.onTick;
     this.cellSize = data.cellSize;
   }
@@ -193,6 +203,29 @@ class LandGrabScene extends Phaser.Scene {
         this.onTick(this.gameStateRef.current, this.chainPeaks);
       },
     });
+  }
+
+  /** (Re)bake `grid` into the shared avatar canvas texture, skipping the redraw when it's unchanged since last tick. */
+  private ensureAvatarTexture(grid: AvatarGrid): string {
+    const signature = grid.join(",");
+    if (this.bakedAvatarSignature === signature && this.textures.exists(AVATAR_TEXTURE_KEY)) {
+      return AVATAR_TEXTURE_KEY;
+    }
+    this.bakedAvatarSignature = signature;
+    const side = AVATAR_SIZE * AVATAR_TEXTURE_PIXEL_SIZE;
+    if (this.textures.exists(AVATAR_TEXTURE_KEY)) this.textures.remove(AVATAR_TEXTURE_KEY);
+    const canvasTexture = this.textures.createCanvas(AVATAR_TEXTURE_KEY, side, side)!;
+    const ctx = canvasTexture.getContext();
+    for (let row = 0; row < AVATAR_SIZE; row++) {
+      for (let col = 0; col < AVATAR_SIZE; col++) {
+        const color = grid[row * AVATAR_SIZE + col];
+        if (!color) continue;
+        ctx.fillStyle = color;
+        ctx.fillRect(col * AVATAR_TEXTURE_PIXEL_SIZE, row * AVATAR_TEXTURE_PIXEL_SIZE, AVATAR_TEXTURE_PIXEL_SIZE, AVATAR_TEXTURE_PIXEL_SIZE);
+      }
+    }
+    canvasTexture.refresh();
+    return AVATAR_TEXTURE_KEY;
   }
 
   private draw() {
@@ -267,13 +300,21 @@ class LandGrabScene extends Phaser.Scene {
 
     for (const marker of this.headMarkers) marker.destroy();
     this.headMarkers = [];
+    const humanAvatar = this.avatarRef.current;
     for (const player of Object.values(state.players)) {
       if (!player.alive) continue;
       const cx = player.head.col * cell + cell / 2;
       const cy = player.head.row * cell + cell / 2;
-      const marker = this.add.circle(cx, cy, cell * 0.28, 0xffffff);
-      marker.setStrokeStyle(2, player.color);
-      this.headMarkers.push(marker);
+      if (player.id === HUMAN_ID && humanAvatar) {
+        const key = this.ensureAvatarTexture(humanAvatar);
+        const sprite = this.add.image(cx, cy, key);
+        sprite.setDisplaySize(cell * 0.9, cell * 0.9);
+        this.headMarkers.push(sprite);
+      } else {
+        const marker = this.add.circle(cx, cy, cell * 0.28, 0xffffff);
+        marker.setStrokeStyle(2, player.color);
+        this.headMarkers.push(marker);
+      }
     }
   }
 }
@@ -313,6 +354,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   const [botTypes, setBotTypes] = useState<Record<string, BotType>>(makeInitialBotTypes);
   const [rules, setRules] = useState<GameRules>({ ...DEFAULT_GAME_RULES });
   const [username, setUsername] = useState<string>(() => loadUserProfile().username);
+  const [avatar, setAvatar] = useState<AvatarGrid | null>(() => loadUserProfile().avatar ?? null);
 
   const controlRef = useRef<SceneControl>({ paused: false, speed: 2, stepOnce: false });
   const profilesRef = useRef(profiles);
@@ -320,6 +362,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   const botTypesRef = useRef(botTypes);
   const rulesRef = useRef(rules);
   const usernameRef = useRef(username);
+  const avatarRef = useRef(avatar);
 
   /** The human's display name, trimmed and never empty. Bots keep their fixed labels. */
   const displayLabel = (player: Pick<PlayerState, "id" | "label">): string =>
@@ -384,8 +427,11 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   }, [rules]);
   useEffect(() => {
     usernameRef.current = username;
-    saveUserProfile({ schemaVersion: 1, username });
-  }, [username]);
+    saveUserProfile({ schemaVersion: 1, username, avatar });
+  }, [username, avatar]);
+  useEffect(() => {
+    avatarRef.current = avatar;
+  }, [avatar]);
 
   // Space toggles pause, "." single-steps. Ignore while a control has focus so
   // the panel's sliders/buttons keep their own key handling.
@@ -485,6 +531,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
         autopilotRef,
         botTypesRef,
         rulesRef,
+        avatarRef,
         cellSize: dims.cell,
         onTick: (state: GameState, chainPeaks: Record<string, number>) => {
           if (replayLogRef.current) recordFrame(replayLogRef.current, state);
@@ -656,11 +703,13 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
           configs={PLAYER_CONFIGS}
           humanId={HUMAN_ID}
           username={username}
+          avatar={avatar}
           profiles={profiles}
           autopilot={autopilot}
           botTypes={botTypes}
           rules={rules}
           onUsernameChange={setUsername}
+          onAvatarChange={setAvatar}
           onProfileChange={handleProfileChange}
           onAutopilotChange={(id, on) => setAutopilot((prev) => ({ ...prev, [id]: on }))}
           onBotTypeChange={(id, type) => setBotTypes((prev) => ({ ...prev, [id]: type }))}

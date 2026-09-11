@@ -1,7 +1,10 @@
+import { useState } from "react";
 import type { BotProfile } from "./botProfile";
 import { BOT_STRATEGIES, strategyFor, type BotType } from "./botStrategy";
 import type { GameRules, PlayerConfig } from "./simulation";
 import { MAX_USERNAME_LENGTH, resolveUsername } from "./userProfile";
+import { PixelAvatarEditor } from "./PixelAvatarEditor";
+import { AVATAR_SIZE, type AvatarGrid } from "./pixelAvatar";
 
 function colorToHex(color: number): string {
   return `#${color.toString(16).padStart(6, "0")}`;
@@ -25,17 +28,34 @@ const HUMAN_RULES = [
   "Start gate: your boat holds on its base until your first key press (re-arms after a respawn).",
 ];
 
+/** A tiny live preview of the 8x8 avatar grid, shown wherever the plain color dot would otherwise go. */
+function AvatarThumbnail({ avatar, size = 24 }: { avatar: AvatarGrid; size?: number }) {
+  return (
+    <div
+      className="grid rounded-sm overflow-hidden shrink-0"
+      style={{ width: size, height: size, gridTemplateColumns: `repeat(${AVATAR_SIZE}, 1fr)` }}
+    >
+      {avatar.map((color, i) => (
+        <div key={i} style={{ backgroundColor: color ?? "transparent" }} />
+      ))}
+    </div>
+  );
+}
+
 export interface BotProfilePanelProps {
   configs: PlayerConfig[];
   humanId: string;
   /** The human player's chosen name (raw, as typed). */
   username: string;
+  /** The human player's custom pixel-art avatar, or `null` to use the plain color marker. */
+  avatar: AvatarGrid | null;
   profiles: Record<string, BotProfile>;
   autopilot: Record<string, boolean>;
   /** Which archetype drives each player — bots always, a human only while on autopilot. */
   botTypes: Record<string, BotType>;
   rules: GameRules;
   onUsernameChange: (value: string) => void;
+  onAvatarChange: (avatar: AvatarGrid | null) => void;
   onProfileChange: (id: string, key: keyof BotProfile, value: number) => void;
   onAutopilotChange: (id: string, on: boolean) => void;
   onBotTypeChange: (id: string, type: BotType) => void;
@@ -48,11 +68,13 @@ export function BotProfilePanel({
   configs,
   humanId,
   username,
+  avatar,
   profiles,
   autopilot,
   botTypes,
   rules,
   onUsernameChange,
+  onAvatarChange,
   onProfileChange,
   onAutopilotChange,
   onBotTypeChange,
@@ -60,6 +82,7 @@ export function BotProfilePanel({
   onResetAll,
   onRulesChange,
 }: BotProfilePanelProps) {
+  const [avatarEditorOpen, setAvatarEditorOpen] = useState(false);
   return (
     <div className="rounded-lg border border-border bg-card/40 p-4" data-testid="bot-profile-panel">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4">
@@ -103,10 +126,14 @@ export function BotProfilePanel({
               className="rounded-lg border border-border bg-background/40 p-3"
             >
               <div className="flex items-center gap-2 mb-2">
-                <span
-                  className="w-3 h-3 rounded-full inline-block shrink-0"
-                  style={{ backgroundColor: colorToHex(config.color) }}
-                />
+                {isHuman && avatar ? (
+                  <AvatarThumbnail avatar={avatar} size={16} />
+                ) : (
+                  <span
+                    className="w-3 h-3 rounded-full inline-block shrink-0"
+                    style={{ backgroundColor: colorToHex(config.color) }}
+                  />
+                )}
                 <span className="text-sm font-medium text-foreground">
                   {isHuman ? resolveUsername(username) : config.label}
                 </span>
@@ -143,6 +170,31 @@ export function BotProfilePanel({
                     Shown on the leaderboard and saved to this browser.
                   </span>
                 </label>
+              )}
+
+              {isHuman && (
+                <div className="flex items-center gap-2 mb-2">
+                  <AvatarThumbnail avatar={avatar ?? Array(AVATAR_SIZE * AVATAR_SIZE).fill(colorToHex(config.color))} size={28} />
+                  <div className="flex flex-col gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setAvatarEditorOpen(true)}
+                      className="self-start px-2.5 py-1 rounded-md bg-secondary text-secondary-foreground text-xs font-medium hover:opacity-90 transition-opacity"
+                    >
+                      {avatar ? "Edit avatar" : "Design avatar"}
+                    </button>
+                    <span className="text-[11px] text-muted-foreground">
+                      Replaces your head marker in-game with this 8×8 sprite.
+                    </span>
+                  </div>
+                  <PixelAvatarEditor
+                    open={avatarEditorOpen}
+                    onOpenChange={setAvatarEditorOpen}
+                    value={avatar}
+                    seedColor={colorToHex(config.color)}
+                    onSave={onAvatarChange}
+                  />
+                </div>
               )}
 
               {isHuman && (
