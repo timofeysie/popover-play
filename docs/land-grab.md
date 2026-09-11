@@ -252,10 +252,12 @@ including why a stationary player at one corner biases the standings.
 - **Full screen** (in the leaderboard panel) expands the grid to fill the window;
   because the cell count changes, toggling restarts the match. **Esc** exits.
 - **Game over** — when the match is decided ([above](#match-end--game-records)) the loop
-  pauses and a dialog shows the winner and match stats; **Play again** restarts,
-  **Dismiss** leaves the final board on screen, **Watch replay** expands the dialog and
-  plays the match back from the first tick, then announces the winner and (windowed only)
-  starts a fresh match after 5s.
+  pauses and the dialog opens straight into a quick auto-played replay of the last 10
+  ticks (slowest speed) — the deciding move — before switching to the winner + match
+  stats view; **Play again** restarts, **Dismiss** leaves the final board on screen,
+  **Watch replay** replays the full match from tick 0 and returns to the stats view when
+  it ends. Windowed mode auto-restarts 5s after the stats view appears; full screen waits
+  for **Dismiss** or **Play again**.
 - **Replay** — every match is recorded tick by tick into an in-memory `ReplayLog`; the
   **Replay** control opens a scrubbable canvas playback below the board with per-player
   facing / cell counts, for eyeballing what the capture and split logic did. In-memory

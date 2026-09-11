@@ -3,7 +3,10 @@ import { frameChainsAt, frameGridAt, frameHeadHistoryAt, type ReplayLog } from "
 import { chainPositions } from "./chainTrail";
 import { TICK_MS } from "./simulation";
 
-const SPEED_OPTIONS = [0.5, 1, 2, 4];
+export const SPEED_OPTIONS = [0.5, 1, 2, 4];
+
+/** How long playback holds on the final frame before `onEnded` fires. */
+const END_HOLD_MS = 3000;
 
 const BTN_PRIMARY =
   "px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity";
@@ -88,8 +91,12 @@ export interface LandGrabReplayProps {
   log: ReplayLog;
   /** Pixel size of one cell; defaults to a fit that keeps the board ~520px wide. */
   cellSize?: number;
-  /** Start at frame 0 and play immediately, rather than resting on the last frame. */
+  /** Start playing immediately, rather than resting paused on the last frame. */
   autoPlay?: boolean;
+  /** Frame to start `autoPlay` from. Defaults to 0 (the opening frame). */
+  startIndex?: number;
+  /** Playback speed to start `autoPlay` at — one of `SPEED_OPTIONS`. Defaults to 2×. */
+  initialSpeed?: number;
   /** Fired once when playback reaches the final frame (only while actually playing). */
   onEnded?: () => void;
   onClose?: () => void;
@@ -105,6 +112,8 @@ export function LandGrabReplay({
   log,
   cellSize,
   autoPlay,
+  startIndex,
+  initialSpeed,
   onEnded,
   onClose,
   className,
@@ -112,20 +121,21 @@ export function LandGrabReplay({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameCount = log.frames.length;
 
-  const [index, setIndex] = useState(autoPlay ? 0 : frameCount - 1);
+  const [index, setIndex] = useState(autoPlay ? (startIndex ?? 0) : frameCount - 1);
   const [playing, setPlaying] = useState(!!autoPlay);
-  const [speed, setSpeed] = useState(2);
+  const [speed, setSpeed] = useState(initialSpeed ?? 2);
   // Fires `onEnded` at most once per log.
   const endedRef = useRef(false);
 
   const cell = cellSize ?? Math.max(6, Math.min(22, Math.floor(520 / Math.max(1, log.colCount))));
 
-  // A new log (next finished match) resets playback per `autoPlay`.
+  // A new log (next finished match) resets playback per `autoPlay`/`startIndex`/`initialSpeed`.
   useEffect(() => {
-    setIndex(autoPlay ? 0 : log.frames.length - 1);
+    setIndex(autoPlay ? (startIndex ?? 0) : log.frames.length - 1);
     setPlaying(!!autoPlay);
+    setSpeed(initialSpeed ?? 2);
     endedRef.current = false;
-  }, [log, autoPlay]);
+  }, [log, autoPlay, startIndex, initialSpeed]);
 
   useEffect(() => {
     if (canvasRef.current) drawFrame(canvasRef.current, log, index, cell);
@@ -141,14 +151,16 @@ export function LandGrabReplay({
 
   const clampedIndex = Math.max(0, Math.min(index, frameCount - 1));
 
-  // Stop at the end, and announce it once.
+  // Stop at the end, hold on the final frame for a beat so it actually reads,
+  // then announce it once. Scrubbing/stepping away during the hold cancels the
+  // pending announcement (the effect cleanup clears the timer).
   useEffect(() => {
     if (!playing || clampedIndex < frameCount - 1) return;
     setPlaying(false);
-    if (!endedRef.current) {
-      endedRef.current = true;
-      onEnded?.();
-    }
+    if (endedRef.current) return;
+    endedRef.current = true;
+    const timer = window.setTimeout(() => onEnded?.(), END_HOLD_MS);
+    return () => window.clearTimeout(timer);
   }, [playing, clampedIndex, frameCount, onEnded]);
   const frame = log.frames[clampedIndex];
   const width = log.colCount * cell;

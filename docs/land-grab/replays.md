@@ -104,38 +104,42 @@ A pure viewer over one `ReplayLog` — it never touches the live simulation, so
 it's safe to mount while a fresh match runs.
 
 - **Board** — a `<canvas>` redrawn on every frame change, mirroring
-  `LandGrabScene.draw()` exactly (dark ground, territory at 0.9 alpha, trail at
-  0.4, grid lines, a white head marker ringed in the player's colour). No second
-  Phaser instance. Cell size defaults to a fit that keeps the board ~520px wide.
+  `LandGrabScene.draw()` (dark ground, territory at 0.9 alpha, trail at 0.4, the
+  captured-avatar chain, a white head marker ringed in the player's colour — no
+  grid lines, solid colour fills edge-to-edge). No second Phaser instance. Cell
+  size defaults to a fit that keeps the board ~520px wide.
 - **Transport** — Play/Pause, single-step ◀▶, a 0.5–4× speed select (playback
   advances one frame per `TICK_MS / speed`), and a frame scrubber. Any manual
   step or scrub pauses playback.
 - **Per-player row** — colour dot, label, `ownedCount`, and the current
   `facing` (or `sunk`) at the shown frame — the debugging payload. A note under
   it names the winner on the frame the match is decided.
-- Props: `autoPlay` starts at frame 0 already playing; `onEnded` fires once when
-  playback reaches the last frame (only while actually playing); `className`
-  overrides the card wrapper (pass `""` to drop it inside a modal).
+- Props: `autoPlay` starts playing immediately; `startIndex` says which frame to
+  start it from (default the opening frame); `initialSpeed` says which of
+  `SPEED_OPTIONS` to start at (default 2×); `onEnded` fires once when playback
+  reaches the last frame (only while actually playing); `className` overrides
+  the card wrapper (pass `""` to drop it inside a modal).
 
 ### Two entry points
 
-**Controls row → "Replay"** — toggles an inline `LandGrabReplay` panel below the
-board, resting on the final frame, paused. Disabled until a match has finished.
-Stays available after the game-over modal is gone, so you can re-watch the last
-match while a new one runs.
+**Automatic, on game over** — the moment `winnerId` is set, the game-over modal
+opens straight into the replay (no click needed), `autoPlay`ing from
+`frames.length - 1 - INTRO_REPLAY_TICKS` (the last 10 ticks, clamped to 0) at the
+slowest speed (`Math.min(...SPEED_OPTIONS)`) — a quick highlight of the deciding
+move. When it ends, `onEnded` flips the modal back to the stats view (the same
+block described in [Match Records](./records.md)), which is what actually
+starts the windowed 5s auto-dismiss-and-restart timer — full screen just leaves
+the modal open. `introReplayIndex` (`LandGrabDemo.tsx`) is `null` while this
+isn't in effect, and non-`null` while it's the highlight replay driving the
+modal (as opposed to the full rewatch below).
 
-**Game-over modal → "Watch replay"** — expands the modal (`sm:max-w-2xl`) and
-swaps the stats block for a `LandGrabReplay` with `autoPlay`, so it plays through
-from the first tick. When it ends (`onEnded` → `replayEnded`) the modal shows a
-**"🏆 X wins!"** banner, then:
-
-- **windowed** — closes the modal and starts a fresh match 5s later, same as the
-  plain stats view.
-- **full screen** — stays open until the user hits **Dismiss** or **Play again**.
-
-Clicking "Watch replay" suspends the windowed stats auto-restart timer; the
-post-replay timer above takes over once playback finishes. "Play again" and
-"Dismiss" work at any point, including mid-replay.
+**Controls row → "Replay"**, or the stats view's **"Watch replay"** button —
+both open a full-match `LandGrabReplay` (`autoPlay` from tick 0, default 2×
+speed; `introReplayIndex` reset to `null`). The controls-row copy is an inline
+panel below the board that rests paused on the final frame instead, and stays
+available after the game-over modal is gone so you can re-watch while a new
+match runs. Reaching the end of a modal rewatch also flips back to the stats
+view, restarting the same windowed timer.
 
 ## Later: true algorithm re-execution
 

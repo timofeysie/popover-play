@@ -18,7 +18,7 @@ import { BotProfilePanel } from "./BotProfilePanel";
 import { MatchRecordsPanel } from "./MatchRecordsPanel";
 import { buildGameRecord, saveGameRecord, type LandGrabGameRecord } from "./gameRecord";
 import { createReplayLog, recordFrame, type ReplayLog } from "./replayLog";
-import { LandGrabReplay } from "./LandGrabReplay";
+import { LandGrabReplay, SPEED_OPTIONS as REPLAY_SPEED_OPTIONS } from "./LandGrabReplay";
 import { loadUserProfile, resolveUsername, saveUserProfile } from "./userProfile";
 import { AVATAR_SIZE, type AvatarGrid } from "./pixelAvatar";
 import type { Direction } from "./types";
@@ -38,6 +38,8 @@ import type { Vec2 } from "./types";
 const CELL_SIZE = 22;
 const DEFAULT_DIMS = { rows: 16, cols: 24, cell: CELL_SIZE };
 const SPEED_OPTIONS = [0.25, 0.5, 1, 2, 4];
+/** How many of the final ticks the auto-played, game-over highlight replay covers. */
+const INTRO_REPLAY_TICKS = 10;
 
 interface GridDims {
   rows: number;
@@ -347,8 +349,10 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   const [showReplay, setShowReplay] = useState(false);
   // The game-over modal is showing the replay in place of the stats.
   const [replayInModal, setReplayInModal] = useState(false);
-  // The in-modal replay has finished playing — show the "wins!" announcement.
-  const [replayEnded, setReplayEnded] = useState(false);
+  // Frame the in-modal replay should auto-play from. Set to the last
+  // `INTRO_REPLAY_TICKS` ticks as soon as a match ends; `null` means a
+  // full-match rewatch (from tick 0, default speed) via the "Watch replay" button.
+  const [introReplayIndex, setIntroReplayIndex] = useState<number | null>(null);
   const [profiles, setProfiles] = useState<Record<string, BotProfile>>(makeInitialProfiles);
   const [autopilot, setAutopilot] = useState<Record<string, boolean>>(makeInitialAutopilot);
   const [botTypes, setBotTypes] = useState<Record<string, BotType>>(makeInitialBotTypes);
@@ -402,7 +406,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   const closeGameOver = () => {
     setGameOver(null);
     setReplayInModal(false);
-    setReplayEnded(false);
+    setIntroReplayIndex(null);
   };
 
   const leaderboard = Object.values(players).sort((a, b) => b.ownedCount - a.ownedCount);
@@ -470,10 +474,12 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [fullScreen]);
 
-  // Windowed mode: auto-dismiss the result modal and start a fresh match after 5s.
-  // Full screen keeps the modal up so the final board stays on screen until
-  // dismissed. Suspended while the user is watching the in-modal replay — the
-  // post-replay timer below takes over once it ends.
+  // Windowed mode: once the stats view is showing (the auto-played highlight
+  // replay has finished, or there was nothing to replay), auto-dismiss the
+  // result modal and start a fresh match after 5s. Full screen keeps the modal
+  // up so the final board stays on screen until dismissed. Suspended while a
+  // replay is playing in the modal — flipping `replayInModal` back to `false`
+  // (via the replay's `onEnded`) is what starts this timer.
   useEffect(() => {
     if (hideControls || fullScreen || gameOver === null || replayInModal) return;
     const timer = window.setTimeout(() => {
@@ -482,18 +488,6 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
     }, 5000);
     return () => window.clearTimeout(timer);
   }, [gameOver, fullScreen, hideControls, replayInModal]);
-
-  // After the in-modal replay finishes: windowed mode announces the winner for
-  // 5s then starts a fresh match; full screen leaves the modal up until the user
-  // closes it.
-  useEffect(() => {
-    if (hideControls || fullScreen || !replayInModal || !replayEnded) return;
-    const timer = window.setTimeout(() => {
-      closeGameOver();
-      restart();
-    }, 5000);
-    return () => window.clearTimeout(timer);
-  }, [replayInModal, replayEnded, fullScreen, hideControls]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -504,7 +498,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
     setGameOver(null);
     setShowReplay(false);
     setReplayInModal(false);
-    setReplayEnded(false);
+    setIntroReplayIndex(null);
     replayLogRef.current = hideControlsRef.current
       ? null
       : createReplayLog(stateHolderRef.current.current);
@@ -541,8 +535,15 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
             recordedRef.current = true;
             const record = buildGameRecord(state, { chainPeaks });
             saveGameRecord(record);
+            const log = replayLogRef.current;
+            setReplay(log);
             setGameOver(record);
-            setReplay(replayLogRef.current);
+            // As soon as the match ends, auto-play the last few ticks so the
+            // deciding move is visible before the stats replace it.
+            if (log) {
+              setIntroReplayIndex(Math.max(0, log.frames.length - 1 - INTRO_REPLAY_TICKS));
+              setReplayInModal(true);
+            }
             controlRef.current.paused = true;
             setPaused(true);
           }
@@ -734,7 +735,9 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
               </AlertDialogTitle>
               <AlertDialogDescription>
                 {replayInModal
-                  ? "Replaying the match from the first tick."
+                  ? introReplayIndex !== null
+                    ? "Replaying the final moments."
+                    : "Replaying the match from the first tick."
                   : gameOver && gameOver.winner.ownedCount >= gameOver.board.totalCells
                     ? `${gameOver.winner.label} captured the entire board.`
                     : `${gameOver?.winner.label} was the last boat afloat with nowhere left for the others to respawn.`}
@@ -747,19 +750,11 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
                   <LandGrabReplay
                     log={replay}
                     autoPlay
-                    onEnded={() => setReplayEnded(true)}
+                    startIndex={introReplayIndex ?? undefined}
+                    initialSpeed={introReplayIndex !== null ? Math.min(...REPLAY_SPEED_OPTIONS) : undefined}
+                    onEnded={() => setReplayInModal(false)}
                     className=""
                   />
-                )}
-                {replayEnded && (
-                  <div className="text-center space-y-1">
-                    <p className="text-lg font-semibold text-foreground">
-                      🏆 {gameOver?.winner.label} wins!
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {fullScreen ? "Close when you're ready." : "Starting a new game…"}
-                    </p>
-                  </div>
                 )}
               </div>
             ) : (
@@ -802,7 +797,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
                 <button
                   type="button"
                   onClick={() => {
-                    setReplayEnded(false);
+                    setIntroReplayIndex(null); // full match, from tick 0, default speed
                     setReplayInModal(true);
                   }}
                   className={`${buttonVariants({ variant: "secondary" })} mt-2 sm:mt-0`}
