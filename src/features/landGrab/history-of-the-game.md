@@ -89,7 +89,7 @@ exactly Land Grab's rule set:
   mass audience during the 2017–2018 hyper-casual boom (published under Voodoo's
   hyper-casual label), first as single-player-vs-bots, later adding real multiplayer.
   This is the game Land Grab is most directly modeled on, and the one namechecked in
-  the [design doc](../../../docs/land-grab.md).
+  the [design doc](../../../docs/land-grab/land-grab.md).
 - **Territorial.io** — a related but distinct branch: large-scale, many-player
   territorial conquest by attrition rather than trail-drawing, closer to a real-time
   Risk than to Qix or Tron, but sharing the "claim contiguous grid cells" core.

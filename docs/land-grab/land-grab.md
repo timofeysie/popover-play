@@ -67,10 +67,9 @@ this plan, those are the older intent and **this section is the source of truth*
   **restarts the match**.
 - **Four players:** *You* (cyan, keyboard-controlled) plus three bots (red, yellow,
   green). All four obey identical rules — the only difference is who chooses the moves.
-- Everyone starts alive with a solid **3×3 territory base** (`BASE_RADIUS = 1`). Bases
-  1–4 are placed in the four corners, inset from the edges by
-  `max(2, floor(rows / 5))` rows and `max(2, floor(cols / 5))` columns. A hypothetical
-  5th+ player falls back to a free 3×3 found by scanning outward from board centre.
+- Everyone starts alive with a solid **3×3 territory base** (`BASE_RADIUS = 1`), placed
+  at a random spot rather than the same four corners every match — see
+  [Spawn placement](#spawn-placement) for how a spot is chosen and why.
 - **Score** is your current territory-cell count. The leaderboard lists all players
   sorted by score, highest first (a right-hand panel on viewports ≥ 1400 px, otherwise
   an inline row under the board).
@@ -153,11 +152,59 @@ territory). **Cutting an opponent's trail runs this same fill** — see
   Without owned ground there's nothing to close a loop onto, so this stops a fully
   surrounded boat from drifting on forever laying trail through enemy land. It is *not* a
   trail cut, so it doesn't bump anyone's `captures`.
-- **Respawn needs a clear 3×3.** When the timer is up, the game looks for a fully-neutral
-  3×3 pocket, scanning outward from your old home. If none exists yet you **stay dead**,
-  and it re-checks every tick until one opens up (freed by a later capture, split, or
-  another player dying). Only then do you get a fresh 3×3 base at that spot, facing up,
-  with the human start gate re-armed.
+- **Respawn needs a clear 3×3, placed away from other players.** When the timer is up,
+  the game looks for a fully-neutral 3×3 pocket with headroom around it — not just any
+  free square, but one that isn't hugging a rival's border (see
+  [Spawn placement](#spawn-placement)). If nothing clears the bar yet you **stay dead**,
+  and it re-checks every tick until a pocket opens up (freed by a later capture, split,
+  or another player dying). Only then do you get a fresh 3×3 base at that spot, facing
+  up, with the human start gate re-armed.
+
+### Spawn placement
+
+Both the opening bases and every respawn go through the same placement logic,
+`findOpenSpawn` (`grid.ts`), which has to satisfy two things at once: never land on top
+of existing territory or trail, and stay cheap — this can't become a per-tick cost even
+in the demo's **Large map** board mode (`LandGrabDemo.tsx`), which scales the board up
+to `LARGE_MAP_MAX_ROWS × LARGE_MAP_MAX_COLS` = 120×180 = 21,600 cells.
+
+**The bug this replaced:** the original version scanned outward, ring by ring, from a
+preferred cell and returned the *first* fully-neutral 3×3 square it found. That's a
+valid square, but it says nothing about what's just outside it — a "free" 3×3 patch one
+cell off a rival's border is still free, so a spawn could land right next to another
+player and get its wake cut on their very next pass, before it had gotten anywhere.
+
+**The algorithm — best-candidate sampling, scored by clearance:**
+
+1. Try `SPAWN_SAMPLE_COUNT` (20) random cells on the board.
+2. Score each by its **clearance radius** — the largest neutral square that can be
+   centered on it, capped at `radius + SPAWN_CLEARANCE_MARGIN` (base radius + 3, i.e.
+   "comfortably in the open," not the single deepest point on the whole board). A
+   candidate that isn't itself a neutral cell scores `-1` and is discarded.
+3. Keep the best-scoring candidate seen so far, and stop the moment one hits the cap —
+   it's already deep enough, so searching further only costs time for no benefit.
+4. If every sample comes up short of even the minimum needed to fit the base at all (a
+   packed board, late in a match), fall back to the old behavior: an exhaustive outward
+   ring-scan from the preferred cell (the player's old home, on a respawn), guaranteed to
+   find a valid spot if one exists anywhere on the grid.
+
+**Why this stays cheap as the board grows:** steps 1–3 cost
+`SPAWN_SAMPLE_COUNT × (radius + SPAWN_CLEARANCE_MARGIN)²` cell checks — a small
+constant (worst case ~20 × 4² = 320) that does **not** scale with board size. Only the
+step-4 fallback is board-size-dependent, and it only runs when sampling already failed —
+which means the board is nearly full anyway, the one case where an exhaustive scan is
+unavoidable (there may be only one valid pocket left, anywhere on the grid). Measured on
+a 200×300 board with two large territory blobs: ~0.003ms average per call in the common
+(sampled) case, ~25ms for the rare full-board fallback — both trivial next to a single
+`TICK_MS = 160` tick.
+
+**Initial spawn** reuses the same function: `randomSpawnCandidate` picks a uniformly
+random point for each player in turn — inset from the edges by
+`max(BASE_RADIUS + 1, floor(rows / 5))` rows and `max(BASE_RADIUS + 1, floor(cols / 5))`
+columns, the same margins the old fixed corners used — and `findOpenSpawn` resolves it
+to an actual clear, well-spaced spot. So the bases no longer sit in the same four
+corners every match, but still can't overlap each other or a base placed earlier in the
+same setup pass.
 
 ### Match end & game records
 
@@ -467,8 +514,9 @@ existing `npm run dev` / static-build model. Recommended split, in phases:
 - **Bot difficulty for Phase 0** — simplest useful bot is "walk toward the nearest
   unclaimed cell, turn back toward home after N steps"; good enough to validate capture
   fill without needing real AI.
-- **Respawn behavior** — fixed slot vs. random open cell; affects fairness late in a
-  match when the board is mostly claimed.
+- ~~**Respawn behavior** — fixed slot vs. random open cell~~ **Resolved:** a clearance-
+  scored random spot, well clear of other players, with the old exhaustive scan kept as
+  a fallback for a nearly-full board — see [Spawn placement](#spawn-placement).
 - **Hosting choice for Phase 2** — deferred until Phase 0/1 prove the mechanic is fun;
   no need to decide now.
 

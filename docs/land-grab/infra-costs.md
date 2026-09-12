@@ -1,6 +1,6 @@
 # Land Grab — AWS Monthly Cost Estimate
 
-Cost model for hosting the **networked phases** of [`docs/land-grab.md`](../land-grab.md)
+Cost model for hosting the **networked phases** of [`docs/land-grab/land-grab.md`](land-grab.md)
 on AWS: the authoritative Node.js + `ws` game server, matchmaking, a leaderboard, and
 serving the built Phaser/React client.
 

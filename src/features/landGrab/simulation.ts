@@ -119,7 +119,7 @@ export function createInitialGameState(
   configs.forEach((config) => {
     // Each player/bot gets a random spot, scanned outward if it collides with
     // an already-placed base — never the same static layout every game.
-    const home = findOpenSpawn(grid, randomSpawnCandidate(rowCount, colCount, rng), BASE_RADIUS);
+    const home = findOpenSpawn(grid, randomSpawnCandidate(rowCount, colCount, rng), BASE_RADIUS, rng);
     grid = placeBase(grid, home, config.id, BASE_RADIUS);
     const autopilot = config.autopilot ?? false;
     const botType = config.botType ?? DEFAULT_BOT_TYPE;

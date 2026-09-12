@@ -2,7 +2,7 @@ import { ChevronRight, Gamepad2, GitBranch, Scissors, BookOpen } from "lucide-re
 import { Link } from "react-router-dom";
 import { LandGrabDemo } from "@/features/landGrab";
 import { NoteDocument } from "@/features/notes";
-import planDoc from "../../docs/land-grab.md?raw";
+import planDoc from "../../docs/land-grab/land-grab.md?raw";
 
 const LandGrab = () => {
   return (

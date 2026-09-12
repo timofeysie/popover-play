@@ -117,12 +117,62 @@ export function isAreaFree(grid: CellState[][], center: Vec2, radius = 1): boole
   return true;
 }
 
-/** Finds an open square to drop a fresh base, scanning outward from a preferred spot. */
-export function findOpenSpawn(grid: CellState[][], preferred: Vec2, radius = 1): Vec2 {
+/** Random candidates tried per `findOpenSpawn` call before falling back to an exhaustive scan. */
+const SPAWN_SAMPLE_COUNT = 20;
+/** Clearance (in addition to the base radius) that counts as "deep enough" — stops sampling early once hit. */
+const SPAWN_CLEARANCE_MARGIN = 3;
+
+/**
+ * How big a neutral square can be centered on `center` — the largest `r` (up
+ * to `maxRadius`, since we only need "comfortably clear", not the true
+ * deepest point on the board) for which `isAreaFree(grid, center, r)` holds.
+ * `-1` if `center` itself isn't even neutral.
+ */
+function clearanceRadius(grid: CellState[][], center: Vec2, maxRadius: number): number {
+  if (grid[center.row]?.[center.col]?.kind !== "neutral") return -1;
+  let clearRadius = 0;
+  while (clearRadius < maxRadius && isAreaFree(grid, center, clearRadius + 1)) clearRadius++;
+  return clearRadius;
+}
+
+/**
+ * Finds an open square to drop a fresh base, biased toward the middle of
+ * open space rather than just the nearest technically-free square — so a
+ * spawn doesn't land hugging another player's border and get cut down
+ * immediately.
+ *
+ * Uses "best-candidate" sampling (a cost independent of board size, which
+ * matters once the board is a large scrolling map): try `SPAWN_SAMPLE_COUNT`
+ * random neutral cells, score each by how big a clear square surrounds it
+ * (capped at `radius + SPAWN_CLEARANCE_MARGIN` — plenty of breathing room,
+ * without paying to find the *most* open spot on the board), and keep the
+ * best. Stops early the moment a candidate clears that cap. Only falls back
+ * to the previous exhaustive outward ring-scan from `preferred` if every
+ * sample came up short (a nearly-full board late in a match), so a spawn is
+ * still guaranteed whenever one exists anywhere on the grid. See
+ * `docs/land-grab/land-grab.md` for the full spawn-placement writeup.
+ */
+export function findOpenSpawn(grid: CellState[][], preferred: Vec2, radius = 1, rng: () => number = Math.random): Vec2 {
   const rowCount = grid.length;
   const colCount = grid[0]?.length ?? 0;
-  if (isAreaFree(grid, preferred, radius)) return preferred;
+  const targetClearance = radius + SPAWN_CLEARANCE_MARGIN;
 
+  let best: Vec2 | null = null;
+  let bestClearance = radius - 1; // anything scoring higher than this fits the base at all
+  for (let i = 0; i < SPAWN_SAMPLE_COUNT; i++) {
+    const candidate: Vec2 = { row: Math.floor(rng() * rowCount), col: Math.floor(rng() * colCount) };
+    const clearance = clearanceRadius(grid, candidate, targetClearance);
+    if (clearance > bestClearance) {
+      best = candidate;
+      bestClearance = clearance;
+      if (clearance >= targetClearance) return best; // deep enough — good enough, stop looking
+    }
+  }
+  if (best) return best;
+
+  // Sampling never found a usable spot (board is packed) — fall back to an
+  // exhaustive outward scan from `preferred`, guaranteed to find one if it exists.
+  if (isAreaFree(grid, preferred, radius)) return preferred;
   const maxSearchRadius = Math.max(rowCount, colCount);
   for (let ring = 1; ring <= maxSearchRadius; ring++) {
     for (let dRow = -ring; dRow <= ring; dRow++) {

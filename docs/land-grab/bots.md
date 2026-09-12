@@ -1,7 +1,7 @@
 # Land Grab — Bots
 
 How the computer-controlled boats in `src/features/landGrab/LandGrabDemo.tsx` choose
-their moves. This is a companion to the [`### Bots`](../land-grab.md#bots) summary in
+their moves. This is a companion to the [`### Bots`](land-grab.md#bots) summary in
 the main plan — same behaviour, more detail.
 
 > **Archetypes now split.** A default match is **one Rambler (Yellow) vs. one Invader
@@ -216,7 +216,7 @@ A **Rambler**'s life cycles through two states, gated purely on trail length (th
 So the loop a Rambler draws is: strike out ~9 cells into open water, then beeline home
 and close the loop by re-entering its own territory. Captures are small and
 frequent rather than large and risky — matching the "simplest useful bot" described in
-the plan's [Open questions](../land-grab.md#open-questions).
+the plan's [Open questions](land-grab.md#open-questions).
 
 ## Tie-breaking and randomness
 
