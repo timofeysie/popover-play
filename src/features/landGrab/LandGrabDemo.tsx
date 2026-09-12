@@ -888,6 +888,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
                     log={replay}
                     autoPlay
                     startIndex={introReplayIndex ?? undefined}
+                    closeUp={introReplayIndex !== null}
                     initialSpeed={introReplayIndex !== null ? Math.min(...REPLAY_SPEED_OPTIONS) : undefined}
                     onEnded={() => setReplayInModal(false)}
                     className=""

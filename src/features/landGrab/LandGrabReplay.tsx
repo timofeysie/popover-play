@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { frameChainsAt, frameGridAt, frameHeadHistoryAt, type ReplayLog } from "./replayLog";
 import { chainPositions } from "./chainTrail";
 import { TICK_MS } from "./simulation";
@@ -7,6 +7,72 @@ export const SPEED_OPTIONS = [0.5, 1, 2, 4];
 
 /** How long playback holds on the final frame before `onEnded` fires. */
 const END_HOLD_MS = 3000;
+
+/** Size (in board cells) of the `closeUp` crop window — see `computeCloseUpCrop`. */
+const CLOSEUP_COLS = 20;
+const CLOSEUP_ROWS = 14;
+
+interface CropRect {
+  row: number;
+  col: number;
+  rows: number;
+  cols: number;
+}
+
+function fullBoardCrop(log: ReplayLog): CropRect {
+  return { row: 0, col: 0, rows: log.rowCount, cols: log.colCount };
+}
+
+/**
+ * A fixed crop window sized `CLOSEUP_ROWS`×`CLOSEUP_COLS`, centered on wherever
+ * the action actually was during `[fromIndex, last frame]` — the bounding box of
+ * every cell that changed plus every still-alive player's head over that span —
+ * clamped so it never runs off the board. Frame 0's `cellChanges` (always the
+ * whole opening grid) is skipped so a very short match doesn't just re-derive
+ * "the whole board" as its close-up.
+ *
+ * Fixed for the whole clip rather than re-centered per frame: this is a
+ * close-up shot of the place the match ended, not a camera that tracks motion.
+ */
+function computeCloseUpCrop(log: ReplayLog, fromIndex: number): CropRect {
+  const lastIndex = log.frames.length - 1;
+  let minRow = Infinity;
+  let maxRow = -Infinity;
+  let minCol = Infinity;
+  let maxCol = -Infinity;
+  const touch = (row: number, col: number) => {
+    if (row < minRow) minRow = row;
+    if (row > maxRow) maxRow = row;
+    if (col < minCol) minCol = col;
+    if (col > maxCol) maxCol = col;
+  };
+
+  for (let i = Math.max(0, Math.min(fromIndex, lastIndex)); i <= lastIndex; i++) {
+    const frame = log.frames[i];
+    if (i > 0) {
+      for (const change of frame.cellChanges) touch(change.row, change.col);
+    }
+    for (const player of Object.values(frame.players)) {
+      if (player.alive) touch(player.head.row, player.head.col);
+    }
+  }
+
+  if (!Number.isFinite(minRow)) {
+    minRow = maxRow = Math.floor(log.rowCount / 2);
+    minCol = maxCol = Math.floor(log.colCount / 2);
+  }
+
+  const rows = Math.min(CLOSEUP_ROWS, log.rowCount);
+  const cols = Math.min(CLOSEUP_COLS, log.colCount);
+  const centerRow = Math.round((minRow + maxRow) / 2);
+  const centerCol = Math.round((minCol + maxCol) / 2);
+  return {
+    row: Math.max(0, Math.min(log.rowCount - rows, centerRow - Math.floor(rows / 2))),
+    col: Math.max(0, Math.min(log.colCount - cols, centerCol - Math.floor(cols / 2))),
+    rows,
+    cols,
+  };
+}
 
 const BTN_PRIMARY =
   "px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity";
@@ -24,26 +90,33 @@ function hex(color: number): string {
   return `#${(color & 0xffffff).toString(16).padStart(6, "0")}`;
 }
 
-/** Redraw the board at `index` — mirrors `LandGrabScene.draw()`, minus Phaser. */
-function drawFrame(canvas: HTMLCanvasElement, log: ReplayLog, index: number, cell: number): void {
+/**
+ * Redraw `crop` (a window onto the board, in cells) at `index` — mirrors
+ * `LandGrabScene.draw()`, minus Phaser. Anything outside `crop` is simply never
+ * visited, so a close-up costs no more than the area it actually shows.
+ */
+function drawFrame(canvas: HTMLCanvasElement, log: ReplayLog, index: number, cell: number, crop: CropRect): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
   const grid = frameGridAt(log, index);
   const frame = log.frames[Math.max(0, Math.min(index, log.frames.length - 1))];
-  const width = log.colCount * cell;
-  const height = log.rowCount * cell;
+  const width = crop.cols * cell;
+  const height = crop.rows * cell;
+  // True when board cell (row, col) falls inside the crop window.
+  const inCrop = (row: number, col: number) =>
+    row >= crop.row && row < crop.row + crop.rows && col >= crop.col && col < crop.col + crop.cols;
 
   ctx.fillStyle = "#0f172a";
   ctx.fillRect(0, 0, width, height);
 
-  for (let row = 0; row < log.rowCount; row++) {
-    for (let col = 0; col < log.colCount; col++) {
+  for (let row = crop.row; row < crop.row + crop.rows; row++) {
+    for (let col = crop.col; col < crop.col + crop.cols; col++) {
       const state = grid[row][col];
       if (state.kind === "neutral") continue;
       const color = log.playerMeta[state.playerId]?.color ?? 0xffffff;
       ctx.fillStyle = rgba(color, state.kind === "territory" ? 0.9 : 0.4);
-      ctx.fillRect(col * cell, row * cell, cell, cell);
+      ctx.fillRect((col - crop.col) * cell, (row - crop.row) * cell, cell, cell);
     }
   }
 
@@ -58,9 +131,10 @@ function drawFrame(canvas: HTMLCanvasElement, log: ReplayLog, index: number, cel
     const positions = chainPositions(headHistory[id] ?? [], chain.length);
     for (let i = 0; i < positions.length; i++) {
       const pos = positions[i];
+      if (!inCrop(pos.row, pos.col)) continue;
       const capturedColor = log.playerMeta[chain[i]]?.color ?? log.playerMeta[id]?.color ?? 0xffffff;
-      const cx = pos.col * cell + cell / 2;
-      const cy = pos.row * cell + cell / 2;
+      const cx = (pos.col - crop.col) * cell + cell / 2;
+      const cy = (pos.row - crop.row) * cell + cell / 2;
       ctx.beginPath();
       ctx.arc(cx, cy, cell * 0.22, 0, Math.PI * 2);
       ctx.fillStyle = rgba(capturedColor, 0.85);
@@ -73,10 +147,10 @@ function drawFrame(canvas: HTMLCanvasElement, log: ReplayLog, index: number, cel
 
   for (const id of log.playerOrder) {
     const player = frame.players[id];
-    if (!player || !player.alive) continue;
+    if (!player || !player.alive || !inCrop(player.head.row, player.head.col)) continue;
     const color = log.playerMeta[id]?.color ?? 0xffffff;
-    const cx = player.head.col * cell + cell / 2;
-    const cy = player.head.row * cell + cell / 2;
+    const cx = (player.head.col - crop.col) * cell + cell / 2;
+    const cy = (player.head.row - crop.row) * cell + cell / 2;
     ctx.beginPath();
     ctx.arc(cx, cy, cell * 0.28, 0, Math.PI * 2);
     ctx.fillStyle = "#ffffff";
@@ -89,12 +163,20 @@ function drawFrame(canvas: HTMLCanvasElement, log: ReplayLog, index: number, cel
 
 export interface LandGrabReplayProps {
   log: ReplayLog;
-  /** Pixel size of one cell; defaults to a fit that keeps the board ~520px wide. */
+  /** Pixel size of one cell; defaults to a fit sized off the visible crop. */
   cellSize?: number;
   /** Start playing immediately, rather than resting paused on the last frame. */
   autoPlay?: boolean;
   /** Frame to start `autoPlay` from. Defaults to 0 (the opening frame). */
   startIndex?: number;
+  /**
+   * Crop to a `CLOSEUP_ROWS`×`CLOSEUP_COLS` window centered on the action from
+   * `startIndex` onward, at a bigger cell size, instead of showing the whole
+   * board shrunk to fit. Meant for the short highlight clip at game over —
+   * especially on a "large map" board, where the endgame is a small corner of a
+   * much bigger world.
+   */
+  closeUp?: boolean;
   /** Playback speed to start `autoPlay` at — one of `SPEED_OPTIONS`. Defaults to 2×. */
   initialSpeed?: number;
   /** Fired once when playback reaches the final frame (only while actually playing). */
@@ -113,6 +195,7 @@ export function LandGrabReplay({
   cellSize,
   autoPlay,
   startIndex,
+  closeUp,
   initialSpeed,
   onEnded,
   onClose,
@@ -127,7 +210,15 @@ export function LandGrabReplay({
   // Fires `onEnded` at most once per log.
   const endedRef = useRef(false);
 
-  const cell = cellSize ?? Math.max(6, Math.min(22, Math.floor(520 / Math.max(1, log.colCount))));
+  // Fixed for the whole mount — see `computeCloseUpCrop`'s "fixed shot, not a
+  // tracking camera" note.
+  const crop = useMemo(
+    () => (closeUp ? computeCloseUpCrop(log, startIndex ?? 0) : fullBoardCrop(log)),
+    [log, closeUp, startIndex],
+  );
+  const cell =
+    cellSize ??
+    Math.max(6, Math.min(closeUp ? 32 : 22, Math.floor((closeUp ? 480 : 520) / Math.max(1, crop.cols))));
 
   // A new log (next finished match) resets playback per `autoPlay`/`startIndex`/`initialSpeed`.
   useEffect(() => {
@@ -138,8 +229,8 @@ export function LandGrabReplay({
   }, [log, autoPlay, startIndex, initialSpeed]);
 
   useEffect(() => {
-    if (canvasRef.current) drawFrame(canvasRef.current, log, index, cell);
-  }, [log, index, cell]);
+    if (canvasRef.current) drawFrame(canvasRef.current, log, index, cell, crop);
+  }, [log, index, cell, crop]);
 
   useEffect(() => {
     if (!playing) return;
@@ -169,8 +260,8 @@ export function LandGrabReplay({
     return () => window.clearTimeout(timer);
   }, [clampedIndex, frameCount, onEnded]);
   const frame = log.frames[clampedIndex];
-  const width = log.colCount * cell;
-  const height = log.rowCount * cell;
+  const width = crop.cols * cell;
+  const height = crop.rows * cell;
 
   const step = (delta: number) => {
     setPlaying(false);
@@ -273,11 +364,13 @@ export function LandGrabReplay({
         })}
       </ul>
 
-      {frame.winnerId && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Decided on this frame — winner: {log.playerMeta[frame.winnerId]?.label ?? frame.winnerId}
-        </p>
-      )}
+      {/* Always rendered (visibility toggled, not the element itself) so this
+          line reaching the deciding frame doesn't change the card's height —
+          which would otherwise jump the whole modal right as it lands. */}
+      <p className={`mt-2 text-xs text-muted-foreground ${frame.winnerId ? "" : "invisible"}`}>
+        Decided on this frame — winner:{" "}
+        {frame.winnerId ? log.playerMeta[frame.winnerId]?.label ?? frame.winnerId : "—"}
+      </p>
     </div>
   );
 }
