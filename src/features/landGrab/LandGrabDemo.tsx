@@ -170,6 +170,12 @@ class LandGrabScene extends Phaser.Scene {
   private chainMarkers: Phaser.GameObjects.Arc[] = [];
   /** The lower-left overview camera in "large map" mode, `null` otherwise. */
   private minimapCamera: Phaser.Cameras.Scene2D.Camera | null = null;
+  /**
+   * Invisible follow target for the main camera in large-map mode. Moved to the human's exact
+   * head position once per tick; the camera itself lerps toward it every render frame (via
+   * `startFollow`), which is what turns the once-per-160ms cell jump into a smooth glide.
+   */
+  private cameraTarget: Phaser.GameObjects.Zone | null = null;
   /** World units per minimap screen pixel — used to size the fixed-screen-size player dots. */
   private minimapZoom = 1;
   /** Player/bot dots drawn only for the minimap (the normal head markers are too small to read at that zoom). */
@@ -273,6 +279,14 @@ class LandGrabScene extends Phaser.Scene {
     border.lineStyle(2, 0x64748b, 0.9);
     border.strokeRect(x + 1, y + 1, mmWidth - 2, mmHeight - 2);
     minimap.ignore(border);
+
+    const human = state.players[HUMAN_ID];
+    const startX = human ? human.head.col * cell + cell / 2 : worldWidth / 2;
+    const startY = human ? human.head.row * cell + cell / 2 : worldHeight / 2;
+    this.cameraTarget = this.add.zone(startX, startY, 1, 1);
+    // Lerp toward the target every render frame instead of snapping to it once per tick —
+    // that's what turns the once-per-160ms cell jump into a smooth glide.
+    this.cameras.main.startFollow(this.cameraTarget, false, 0.12, 0.12);
   }
 
   /** (Re)bake `grid` into the shared avatar canvas texture, skipping the redraw when it's unchanged since last tick. */
@@ -306,9 +320,9 @@ class LandGrabScene extends Phaser.Scene {
     const g = this.graphics;
     g.clear();
 
-    if (this.isLargeMap) {
+    if (this.isLargeMap && this.cameraTarget) {
       const human = state.players[HUMAN_ID];
-      if (human) this.cameras.main.centerOn(human.head.col * cell + cell / 2, human.head.row * cell + cell / 2);
+      if (human) this.cameraTarget.setPosition(human.head.col * cell + cell / 2, human.head.row * cell + cell / 2);
     }
 
     g.fillStyle(0x0f172a, 1);

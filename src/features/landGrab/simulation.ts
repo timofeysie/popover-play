@@ -184,19 +184,52 @@ function claimCells(grid: CellState[][], cells: Vec2[], playerId: string): CellS
   return next;
 }
 
-/** Wipe a player's live wake off the board — used when they're sunk with no land left to close onto. */
+/**
+ * Wipe a player's live wake off the board — used when they're sunk with no
+ * land left to close onto. A stretch laid across a still-standing rival's
+ * territory (`capturedFrom`) reverts to that rival rather than going neutral —
+ * the rival never actually lost it, since this run never closed a loop or
+ * landed a capture.
+ */
 function clearTrailCells(grid: CellState[][], playerId: string): CellState[][] {
   let changed = false;
   const next = grid.map((row) =>
     row.map((cell): CellState => {
       if (cell.kind === "trail" && cell.playerId === playerId) {
         changed = true;
-        return { kind: "neutral" };
+        return cell.capturedFrom ? { kind: "territory", playerId: cell.capturedFrom } : { kind: "neutral" };
       }
       return cell;
     }),
   );
   return changed ? next : grid;
+}
+
+/**
+ * Turn a sunk player's live wake into territory. A stretch laid over open
+ * ground is fair spoils for `fallbackOwner` (whoever cut them down, or the
+ * player themself on a successful loop close). A stretch laid across a still-
+ * standing rival's land (`capturedFrom`) never actually left that rival's
+ * hands — this run ended before it could close a loop or land a capture, so
+ * it reverts to them instead of following the rest of the wake.
+ */
+function settleTrail(grid: CellState[][], trail: Vec2[], fallbackOwner: string): CellState[][] {
+  if (trail.length === 0) return grid;
+  const next = grid.map((row) => row.slice());
+  const rows = next.length;
+  const cols = next[0]?.length ?? 0;
+  for (const { row, col } of trail) {
+    if (row < 0 || row >= rows || col < 0 || col >= cols) continue;
+    // Read capturedFrom off the *original* grid, not the copy being written to —
+    // a trail can list the same cell twice (e.g. the tip the capturer just
+    // stepped onto is also the wake's last entry), and re-reading a cell this
+    // same pass already turned into "territory" would lose its capturedFrom
+    // to the fallback on the second visit.
+    const cell = grid[row][col];
+    const owner = (cell.kind === "trail" && cell.capturedFrom) || fallbackOwner;
+    next[row][col] = { kind: "territory", playerId: owner };
+  }
+  return next;
 }
 
 /** Repaint every `fromId` territory cell as `toId` — used when a trail cut hands one player's land to another. */
@@ -366,12 +399,15 @@ export function stepGame(state: GameState): GameState {
     if (targetCell.kind === "trail" && targetCell.playerId !== player.id) {
       const victim = players[targetCell.playerId];
 
-      // Cutting a rival's trail is a capture. Their whole wake, the ground they
-      // still held, and your own wake all flip to your colour — one connected
-      // bridge running from your land, along both trails, to the territory
-      // you've just seized. The victim is sunk and must respawn.
-      grid = claimCells(grid, victim.trail, player.id);
-      grid = claimCells(grid, [next], player.id);
+      // Cutting a rival's trail is a capture. The ground they still held and
+      // your own wake flip to your colour — one connected bridge running from
+      // your land, along your trail, to the territory you've just seized.
+      // Their wake is spoils too, *except* any stretch of it that was only
+      // ever passing across some third rival's still-standing land: their run
+      // ended here, never closing a loop or landing a capture, so that ground
+      // reverts to its rightful owner instead of following the rest of the
+      // wake to you. The victim is sunk and must respawn.
+      grid = settleTrail(grid, [...victim.trail, next], player.id);
       grid = claimCells(grid, player.trail, player.id);
       grid = transferTerritory(grid, victim.id, player.id);
       grid = resolveCapture(grid, player.id);
@@ -415,8 +451,19 @@ export function stepGame(state: GameState): GameState {
       // wake: advance the head, leave the trail untouched.
       player.head = next;
     } else {
+      // Stepping onto open ground lays a plain trail cell. Stepping onto a
+      // rival's still-standing territory (the only other option here —
+      // `reenteringOwnLand` and the rival-trail branch above have already
+      // claimed every other case) draws the trail *over* it without taking it
+      // yet: the cell stays theirs for scoring (`countOwnedCells`) until this
+      // run actually finishes by closing a loop or landing a capture; if we're
+      // cut down first, `capturedFrom` is how it finds its way back to them
+      // instead of vanishing or following our wake to whoever cut us.
+      const capturedFrom = targetCell.kind === "territory" ? targetCell.playerId : undefined;
       const row = grid[next.row].slice();
-      row[next.col] = { kind: "trail", playerId: player.id };
+      row[next.col] = capturedFrom
+        ? { kind: "trail", playerId: player.id, capturedFrom }
+        : { kind: "trail", playerId: player.id };
       grid = grid.slice();
       grid[next.row] = row;
       player.trail.push(next);

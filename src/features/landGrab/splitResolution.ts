@@ -24,10 +24,17 @@ export function resolveTerritorySplit(grid: CellState[][], playerId: string, anc
   const colCount = grid[0]?.length ?? 0;
   const visited: boolean[][] = Array.from({ length: rowCount }, () => new Array(colCount).fill(false));
 
+  // A cell someone else's live trail is merely crossing (`capturedFrom`) hasn't
+  // actually left `playerId` yet — count it as theirs here too, so a stretch of
+  // solid land bridged only by an in-progress, uncompleted trail doesn't read as
+  // two disconnected islands and lose the piece off the anchor before that
+  // trail ever closes a loop or lands a capture.
   function isOwned(row: number, col: number): boolean {
     if (row < 0 || row >= rowCount || col < 0 || col >= colCount) return false;
     const cell = grid[row][col];
-    return cell.kind === "territory" && cell.playerId === playerId;
+    if (cell.kind === "territory") return cell.playerId === playerId;
+    if (cell.kind === "trail") return cell.capturedFrom === playerId;
+    return false;
   }
 
   function collectComponent(startRow: number, startCol: number): Vec2[] {
@@ -73,7 +80,13 @@ export function resolveTerritorySplit(grid: CellState[][], playerId: string, anc
   for (const component of components) {
     if (component === keeper) continue;
     for (const { row, col } of component) {
-      next[row][col] = { kind: "neutral" };
+      const cell = next[row][col];
+      // A plain owned cell goes fully neutral. A cell only counted as owned
+      // because someone else's live trail is crossing it (`capturedFrom`)
+      // isn't solid ground to void — the trail is still there and mid-run;
+      // just drop the now-orphaned claim underneath it, same as if it had
+      // been laid over open ground, and leave the trail cell itself alone.
+      next[row][col] = cell.kind === "trail" ? { kind: "trail", playerId: cell.playerId } : { kind: "neutral" };
     }
   }
   return next;

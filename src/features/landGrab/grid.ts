@@ -3,7 +3,19 @@ import type { Vec2 } from "./types";
 export type CellState =
   | { kind: "neutral" }
   | { kind: "territory"; playerId: string }
-  | { kind: "trail"; playerId: string };
+  | {
+      kind: "trail";
+      playerId: string;
+      /**
+       * Set when this trail was laid across a still-standing rival's land rather
+       * than open ground — the rival hasn't actually lost the cell yet. It's
+       * still theirs (see `countOwnedCells`) unless the layer's run finishes by
+       * closing a loop or landing a capture; if the layer is cut down first, the
+       * cell reverts here instead of following the rest of their wake. See
+       * `docs/land-grab/*` for the capture-loop rules this backs.
+       */
+      capturedFrom?: string;
+    };
 
 export function createEmptyGrid(rowCount: number, colCount: number): CellState[][] {
   return Array.from({ length: rowCount }, () =>
@@ -69,6 +81,9 @@ export function countOwnedCells(grid: CellState[][], playerId: string): number {
   for (const row of grid) {
     for (const cell of row) {
       if (cell.kind === "territory" && cell.playerId === playerId) count++;
+      // A rival's trail merely crossing this cell hasn't taken it yet — it's
+      // still ours until their run closes a loop or lands a capture.
+      else if (cell.kind === "trail" && cell.capturedFrom === playerId) count++;
     }
   }
   return count;
