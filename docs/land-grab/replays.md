@@ -42,13 +42,31 @@ recording.
 an empty grid and replaying every frame's `cellChanges` from 0 up to `i`. The
 index is clamped into range.
 
-### The tick cap
+### The tick cap — a ring buffer, not a hard stop
 
-`MAX_REPLAY_TICKS` (3000) is a safety ceiling on a runaway game. Once
-`frames.length` reaches it, `recordFrame` sets `log.truncated = true` and
-**stops** — earlier frames are kept, never overwritten, so the frame where
-something first went wrong always survives. A normal match ends in a few hundred
-ticks and never comes near the cap; the viewer shows a "capped" note if it does.
+`MAX_REPLAY_TICKS` (3000) is how many of the most recent ticks the log keeps.
+A normal match ends in a few hundred ticks and never comes near it — but a
+match that runs longer (a slow/paused game, an unusually durable stalemate)
+used to just stop being recorded at the cap, which meant the replay could miss
+the actual finish entirely. It doesn't anymore: past the cap, `recordFrame`
+**drops the oldest frame for every new one it records**, so the log stays a
+fixed-size window that always reaches the current tick. The viewer's "capped"
+note now means "earlier ticks were dropped," not "recording stopped."
+
+Dropping the oldest frame (`evictOldestFrame`) has to preserve two invariants
+the rest of the module relies on:
+
+- **`frameGridAt` needs frame 0 to always be a full grid snapshot**, not a
+  delta — there's nothing older for a delta to apply on top of. `leadingGrid`
+  tracks the grid as of `frames[0]` continuously (the mirror of `runningGrid`,
+  which tracks the *latest* frame instead), so re-basing the frame that becomes
+  the new frame 0 is an O(board size) dump of `leadingGrid`, not a replay of
+  the whole (now partly gone) history.
+- **`frameChainsAt` needs a valid starting point**, since the captured-avatar
+  chain (below) is built by folding `captureEvents` forward from frame 0.
+  `leadingChains` plays the same role as `leadingGrid` — chain state as of just
+  before `frames[0]` — so a chain formed before the retained window still shows
+  up instead of silently resetting once its originating frame is dropped.
 
 ## `ReplayLog` shape
 
@@ -57,9 +75,11 @@ ticks and never comes near the cap; the viewer shows a "capped" note if it does.
 | `rowCount`, `colCount` | Board dimensions for this match (constant for its lifetime). |
 | `playerOrder` | Player ids in turn order, copied from `GameState`. |
 | `playerMeta` | `{ [id]: { label, color, isBot } }` — static display info captured once so the viewer needs no live state. `color` is packed `0xRRGGBB`, same as `PlayerState.color`. |
-| `frames` | One `ReplayFrame` per recorded tick, oldest first. |
-| `truncated` | `true` once `MAX_REPLAY_TICKS` was hit and later ticks were dropped. |
-| `runningGrid` | Scratch reconstruction of the latest frame's grid, used only while recording to diff the next tick. Rebuildable from `frames`, so it can be dropped before serialising. |
+| `frames` | One `ReplayFrame` per recorded tick, oldest first. Capped at `MAX_REPLAY_TICKS`. |
+| `truncated` | `true` once the match ran past `MAX_REPLAY_TICKS` and the oldest frames started being dropped — `frames[0]` is no longer tick 0. |
+| `runningGrid` | Scratch reconstruction of the *latest* frame's grid (trailing edge), used only while recording to diff the next tick. Rebuildable from `frames`, so it can be dropped before serialising. |
+| `leadingGrid` | Scratch reconstruction of `frames[0]`'s grid (leading edge) — see above. Also droppable before serialising. |
+| `leadingChains` | Chain state as of just before `frames[0]` — the seed `frameChainsAt` starts folding `captureEvents` onto. `{}` until frames have actually been dropped. |
 
 ### `ReplayFrame`
 
@@ -165,6 +185,9 @@ snapshot recorder documented here.
 `src/test/landGrabReplayLog.test.ts` covers the pure module: frame 0 captures the
 full grid and player meta, `recordFrame` appends deltas rather than whole boards,
 `frameGridAt` reconstructs the exact live `state.grid` at every recorded frame, a
-repeated call for the same tick is ignored, and recording stops at
-`MAX_REPLAY_TICKS` without overwriting. The canvas viewer isn't unit-tested
+repeated call for the same tick is ignored, past `MAX_REPLAY_TICKS` the log keeps
+dropping the oldest frame instead of stopping (recording still reaches the true
+final tick, frame 0 still carries a full grid however far it's shifted), and a
+chain formed before the retained window still shows up via `leadingChains` after
+its originating frame has been dropped. The canvas viewer isn't unit-tested
 (jsdom has no real 2D context).

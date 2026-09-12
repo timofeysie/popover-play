@@ -105,17 +105,25 @@ describe("recordFrame", () => {
     expect(log.frames).toHaveLength(2);
   });
 
-  it("stops recording at MAX_REPLAY_TICKS instead of overwriting", () => {
+  it("past MAX_REPLAY_TICKS, drops the oldest frame per new one instead of stopping", () => {
     const base = createInitialGameState(3, 3, [HUMAN]);
     const log = createReplayLog(base);
 
-    for (let tick = 1; tick <= MAX_REPLAY_TICKS + 50; tick++) {
-      recordFrame(log, { ...base, tick, grid: base.grid });
+    const lastTick = MAX_REPLAY_TICKS + 50;
+    for (let tick = 1; tick <= lastTick; tick++) {
+      recordFrame(log, { ...base, tick, grid: base.grid, captureEvents: [] });
     }
 
+    // Recording never stopped — it reaches the true final tick...
+    expect(log.frames[log.frames.length - 1].tick).toBe(lastTick);
+    // ...by holding a fixed-size window of the most recent ticks instead.
     expect(log.truncated).toBe(true);
     expect(log.frames).toHaveLength(MAX_REPLAY_TICKS);
-    expect(log.frames[log.frames.length - 1].tick).toBe(MAX_REPLAY_TICKS - 1);
+    expect(log.frames[0].tick).toBe(lastTick - MAX_REPLAY_TICKS + 1);
+    // Frame 0 still carries a full grid snapshot, however far it's shifted —
+    // frameGridAt has nothing older to fall back on.
+    expect(log.frames[0].cellChanges).toHaveLength(9); // 3x3 board
+    expect(frameGridAt(log, log.frames.length - 1)).toEqual(base.grid);
   });
 });
 
@@ -178,5 +186,22 @@ describe("captured-avatar chain — display-only replay data", () => {
     const { log } = captureLog();
     const history = frameHeadHistoryAt(log, 1);
     expect(history.p1[history.p1.length - 1]).toEqual({ row: 1, col: 5 }); // p1's post-capture head
+  });
+
+  it("survives eviction — a chain formed before the retained window still shows up via leadingChains", () => {
+    const { state, log } = captureLog(); // log.frames = [frame 0, frame 1 (the capture)]
+
+    // Push enough further ticks to push both the capture frame and its
+    // predecessor out of the live window, forcing frame 0 to re-base past them.
+    const lastTick = state.tick + MAX_REPLAY_TICKS + 5;
+    for (let tick = state.tick + 1; tick <= lastTick; tick++) {
+      recordFrame(log, { ...state, tick, captureEvents: [] });
+    }
+    expect(log.truncated).toBe(true);
+    expect(log.frames[0].tick).toBeGreaterThan(1); // the original capture frame is long gone
+
+    // The chain itself must still be there — it was folded into `leadingChains`
+    // on the way out rather than silently dropped with its frame.
+    expect(frameChainsAt(log, log.frames.length - 1)).toEqual({ p1: ["p2"], p2: [] });
   });
 });

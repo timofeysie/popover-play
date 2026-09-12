@@ -8,9 +8,14 @@ export const SPEED_OPTIONS = [0.5, 1, 2, 4];
 /** How long playback holds on the final frame before `onEnded` fires. */
 const END_HOLD_MS = 3000;
 
-/** Size (in board cells) of the `closeUp` crop window — see `computeCloseUpCrop`. */
-const CLOSEUP_COLS = 20;
-const CLOSEUP_ROWS = 14;
+/** Margin (in board cells) kept around every close-up player's head/trail. */
+const CLOSEUP_PADDING = 4;
+/** Close-up window never shrinks tighter than this, even nose-to-nose. */
+const CLOSEUP_MIN_ROWS = 10;
+const CLOSEUP_MIN_COLS = 14;
+/** ...or grows past this — beyond this it's not a "close-up" any more. */
+const CLOSEUP_MAX_ROWS = 22;
+const CLOSEUP_MAX_COLS = 30;
 
 interface CropRect {
   row: number;
@@ -24,15 +29,20 @@ function fullBoardCrop(log: ReplayLog): CropRect {
 }
 
 /**
- * A fixed crop window sized `CLOSEUP_ROWS`×`CLOSEUP_COLS`, centered on wherever
- * the action actually was during `[fromIndex, last frame]` — the bounding box of
- * every cell that changed plus every still-alive player's head over that span —
- * clamped so it never runs off the board. Frame 0's `cellChanges` (always the
- * whole opening grid) is skipped so a very short match doesn't just re-derive
- * "the whole board" as its close-up.
+ * A crop window sized to fit every still-alive player's head and current wake
+ * from `fromIndex` through the last frame, plus a fixed padding margin — so
+ * whichever players are left standing for the finish stay fully in frame for
+ * every tick of the clip, rather than one drifting toward (or past) the edge.
  *
- * Fixed for the whole clip rather than re-centered per frame: this is a
- * close-up shot of the place the match ended, not a camera that tracks motion.
+ * Deliberately ignores `cellChanges`: a capture's flood-fill can seize cells
+ * far from where the boats actually were (an enclosed pocket clear across the
+ * loop), which would drag — or blow out — the window away from the actual
+ * fight. A trail is safe to include instead: it's laid immediately behind the
+ * head, so it only ever extends the box along ground a tracked boat actually
+ * covered.
+ *
+ * Sized (and clamped) once for the whole clip rather than re-centered per
+ * frame — this is a fixed shot of the finish, not a camera that tracks motion.
  */
 function computeCloseUpCrop(log: ReplayLog, fromIndex: number): CropRect {
   const lastIndex = log.frames.length - 1;
@@ -48,12 +58,10 @@ function computeCloseUpCrop(log: ReplayLog, fromIndex: number): CropRect {
   };
 
   for (let i = Math.max(0, Math.min(fromIndex, lastIndex)); i <= lastIndex; i++) {
-    const frame = log.frames[i];
-    if (i > 0) {
-      for (const change of frame.cellChanges) touch(change.row, change.col);
-    }
-    for (const player of Object.values(frame.players)) {
-      if (player.alive) touch(player.head.row, player.head.col);
+    for (const player of Object.values(log.frames[i].players)) {
+      if (!player.alive) continue;
+      touch(player.head.row, player.head.col);
+      for (const cell of player.trail) touch(cell.row, cell.col);
     }
   }
 
@@ -62,10 +70,16 @@ function computeCloseUpCrop(log: ReplayLog, fromIndex: number): CropRect {
     minCol = maxCol = Math.floor(log.colCount / 2);
   }
 
-  const rows = Math.min(CLOSEUP_ROWS, log.rowCount);
-  const cols = Math.min(CLOSEUP_COLS, log.colCount);
   const centerRow = Math.round((minRow + maxRow) / 2);
   const centerCol = Math.round((minCol + maxCol) / 2);
+  const rows = Math.min(
+    log.rowCount,
+    Math.max(CLOSEUP_MIN_ROWS, Math.min(CLOSEUP_MAX_ROWS, maxRow - minRow + 1 + CLOSEUP_PADDING * 2)),
+  );
+  const cols = Math.min(
+    log.colCount,
+    Math.max(CLOSEUP_MIN_COLS, Math.min(CLOSEUP_MAX_COLS, maxCol - minCol + 1 + CLOSEUP_PADDING * 2)),
+  );
   return {
     row: Math.max(0, Math.min(log.rowCount - rows, centerRow - Math.floor(rows / 2))),
     col: Math.max(0, Math.min(log.colCount - cols, centerCol - Math.floor(cols / 2))),
