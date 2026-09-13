@@ -301,14 +301,11 @@ export function LandGrabReplay({
         )}
       </div>
 
-      <div className="overflow-x-auto">
-        <canvas
-          ref={canvasRef}
-          width={width}
-          height={height}
-          className="rounded-md border border-border"
-          style={{ width, height }}
-        />
+      <div
+        className="w-full [&>canvas]:block [&>canvas]:h-auto [&>canvas]:max-w-full"
+        style={{ maxWidth: width }}
+      >
+        <canvas ref={canvasRef} width={width} height={height} className="rounded-md border border-border" />
       </div>
 
       <div className="flex flex-wrap items-center gap-3 mt-3">
