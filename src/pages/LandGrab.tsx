@@ -13,8 +13,9 @@ const LandGrab = () => {
           Phase 0 prototype
         </div>
         <h2 className="text-4xl font-bold tracking-tight mb-4 text-foreground">Land Grab</h2>
+        <LandGrabDemo />
         <p className="text-lg text-muted-foreground max-w-2xl leading-relaxed">
-          A Paper.io-style territory game where the capture and elimination rules{" "}
+          A territory game where the capture and elimination rules{" "}
           <strong className="text-foreground">are</strong> the DFS/BFS solution from{" "}
           <Link to="/dfs" className="text-primary hover:underline">
             Number of Islands
@@ -49,7 +50,6 @@ const LandGrab = () => {
                   winner and stats, and the result is saved to this browser (<code>landgrab:game-records</code>).
                 </li>
               </ul>
-              <LandGrabDemo />
             </div>
           </div>
         </details>

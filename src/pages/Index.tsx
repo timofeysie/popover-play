@@ -28,7 +28,8 @@ const exercises = [
   { title: "Math Refresher: Quadratic Polynomials", path: "/math-refresher", active: true },
   { title: "Threshold Decay & Attention Limits", path: "/attention-limits", active: true },
   { title: "Mission Control Cargo Manifest (MCCM)", path: "/mccm", active: true },
-  { title: "Land Grab", path: "/land-grab", active: true },
+  { title: "Land Grab", path: "/", active: true },
+  { title: "Algorithm Dashboard", path: "/dashboard", active: true },
   { title: "Queue Implementation", path: "/queue-implementation", active: false },
 ];
 
@@ -63,7 +64,9 @@ const Index = () => {
         <div className="flex items-center gap-3">
           <Code2 className="hidden sm:block w-6 h-6 text-primary" aria-hidden="true" />
           <h1 className="text-lg font-bold tracking-tight flex items-baseline gap-1.5">
-            <span>Code<span className="text-primary">Lab</span></span>
+            <Link to="/dashboard" className="hover:opacity-80 transition-opacity">
+              Code<span className="text-primary">Lab</span>
+            </Link>
             <span className="text-xs font-normal text-muted-foreground">
               v{__APP_VERSION__}
             </span>

@@ -41,6 +41,9 @@ const SPEED_OPTIONS = [0.25, 0.5, 1, 2, 4];
 /** How many of the final ticks the auto-played, game-over highlight replay covers. */
 const INTRO_REPLAY_TICKS = 10;
 
+/** Minimum finger travel (CSS px) before a touch drag registers as a steering input — keeps taps and small jitter from turning the boat. */
+const TOUCH_DRAG_THRESHOLD = 18;
+
 /** How many times bigger the "large map" world is than the player's viewport, in each dimension. */
 const LARGE_MAP_SCALE = 3;
 const LARGE_MAP_MAX_COLS = 180;
@@ -511,6 +514,38 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
   const hideControlsRef = useRef(hideControls);
   hideControlsRef.current = hideControls;
 
+  // In-progress touch drag used to steer on mobile. Re-anchored every time it fires a
+  // direction change, so a single unlifted finger can chain turns (e.g. drag down, then
+  // right, without leaving the screen) instead of only reading its start-to-now vector.
+  const touchDragRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+
+  /** touchstart-equivalent: arm steering for this finger. Mouse/pen pointers are left alone so desktop click/drag behavior is unaffected. */
+  const handleBoardPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== "touch" || touchDragRef.current) return;
+    touchDragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  /** Once the finger has traveled past the threshold, turn the boat toward the dominant axis and re-anchor from here. */
+  const handleBoardPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = touchDragRef.current;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (Math.hypot(dx, dy) < TOUCH_DRAG_THRESHOLD) return;
+    const direction: Direction =
+      Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up";
+    // Mutates the live game state directly, same as the keyboard handler inside the Phaser
+    // scene — both read/write `stateHolderRef.current.current`, which the tick loop owns.
+    setPlayerFacing(stateHolderRef.current.current, HUMAN_ID, direction);
+    drag.x = event.clientX;
+    drag.y = event.clientY;
+  };
+
+  const handleBoardPointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (touchDragRef.current?.pointerId === event.pointerId) touchDragRef.current = null;
+  };
+
   const restart = () => setRestartToken((n) => n + 1);
 
   /** Dismiss the game-over modal and reset its replay sub-state. */
@@ -705,7 +740,15 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
     >
       <div className="flex flex-col min-[1400px]:flex-row min-[1400px]:items-start gap-4">
         <div className="flex flex-col gap-4 min-w-0">
-          <div ref={containerRef} className="rounded-lg overflow-hidden border border-border w-fit max-w-full overflow-x-auto" />
+          <div
+            ref={containerRef}
+            className="rounded-lg overflow-hidden border border-border w-full touch-none [&>canvas]:block [&>canvas]:h-auto [&>canvas]:max-w-full"
+            style={{ maxWidth: (viewport?.cols ?? dims.cols) * dims.cell }}
+            onPointerDown={handleBoardPointerDown}
+            onPointerMove={handleBoardPointerMove}
+            onPointerUp={handleBoardPointerEnd}
+            onPointerCancel={handleBoardPointerEnd}
+          />
           {!hideControls && (
             <div className="flex flex-wrap items-center gap-3">
               <button
@@ -778,8 +821,33 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
                 ))}
               </ul>
               <span className="text-xs text-muted-foreground ml-auto" data-testid="landgrab-tick">
-                Arrow keys / WASD to move · Space pauses · “.” steps · tick {tick}
+                Arrow keys / WASD (or drag the board on touch) to move · Space pauses · “.” steps · tick {tick}
               </span>
+            </div>
+          )}
+          {/* Mode switches: kept outside the >=1400px-only aside below so they're reachable on
+              mobile too, where there's no room for a permanent sidebar. */}
+          {!hideControls && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => enterMode("fullscreen")}
+                className="px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                {boardMode === "fullscreen" ? "Exit full screen" : "Full screen"}
+              </button>
+              <button
+                onClick={() => enterMode("large")}
+                className="px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+              >
+                {boardMode === "large" ? "Exit large map" : "Large map"}
+              </button>
+              {boardMode !== "demo" && (
+                <span className="text-xs text-muted-foreground">
+                  {boardMode === "large"
+                    ? `${dims.cols}×${dims.rows} world · ${viewport?.cols}×${viewport?.rows} view · press Esc to exit`
+                    : `${dims.cols}×${dims.rows} cells · press Esc to exit`}
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -806,27 +874,6 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
                 <li key={player.id} className="text-destructive text-xs">{displayLabel(player)} trying to respawn…</li>
               ))}
             </ul>
-            <div className="mt-4 flex flex-col gap-2">
-              <button
-                onClick={() => enterMode("fullscreen")}
-                className="w-full px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
-              >
-                {boardMode === "fullscreen" ? "Exit full screen" : "Full screen"}
-              </button>
-              <button
-                onClick={() => enterMode("large")}
-                className="w-full px-3 py-1.5 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
-              >
-                {boardMode === "large" ? "Exit large map" : "Large map"}
-              </button>
-            </div>
-            {boardMode !== "demo" && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                {boardMode === "large"
-                  ? `${dims.cols}×${dims.rows} world · ${viewport?.cols}×${viewport?.rows} view · press Esc to exit`
-                  : `${dims.cols}×${dims.rows} cells · press Esc to exit`}
-              </p>
-            )}
           </aside>
         )}
       </div>

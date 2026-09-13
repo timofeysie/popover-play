@@ -45,7 +45,15 @@ const App = () => (
       <BrowserRouter basename={import.meta.env.BASE_URL}>
         <Routes>
           <Route path="/" element={<Index />}>
-            <Route index element={<Dashboard />} />
+            <Route
+              index
+              element={
+                <Suspense fallback={<div className="px-6 py-12 text-muted-foreground">Loading…</div>}>
+                  <LandGrab />
+                </Suspense>
+              }
+            />
+            <Route path="dashboard" element={<Dashboard />} />
             <Route path="popover" element={<NativePopover />} />
             <Route path="safe-area" element={<SafeArea />} />
             <Route path="isolation" element={<IsolationProperty />} />
@@ -58,14 +66,7 @@ const App = () => (
             <Route path="javascript-gotchas" element={<JavascriptGotchas />} />
             <Route path="math-refresher" element={<MathRefresher />} />
             <Route path="attention-limits" element={<AttentionLimits />} />
-            <Route
-              path="land-grab"
-              element={
-                <Suspense fallback={<div className="px-6 py-12 text-muted-foreground">Loading…</div>}>
-                  <LandGrab />
-                </Suspense>
-              }
-            />
+            <Route path="land-grab" element={<Navigate to="/" replace />} />
             <Route path="mccm">
               <Route index element={<Navigate to="cargo" replace />} />
               <Route element={<MccmWizardShell />}>
