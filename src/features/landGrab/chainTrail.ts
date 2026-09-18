@@ -18,6 +18,14 @@ import type { Vec2 } from "./types";
 export type ChainMap = Record<string, string[]>;
 
 /**
+ * Fill/stroke opacity for trailing chain markers. Deliberately faded — well
+ * below the live head marker's full opacity — so a captured player's dot in
+ * someone else's tail doesn't read as another full-strength player on the
+ * board; only the actual head markers (real players/bots) are full color.
+ */
+export const CHAIN_TRAIL_ALPHA = 0.35;
+
+/**
  * Fold one tick's capture events into a chain map: the victim joins the front
  * of their capturer's chain, and the victim's own chain empties out —
  * whatever they'd been trailing does *not* carry over to their capturer, it

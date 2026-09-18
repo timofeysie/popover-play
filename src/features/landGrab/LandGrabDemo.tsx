@@ -11,7 +11,14 @@ import {
   type PlayerConfig,
   type PlayerState,
 } from "./simulation";
-import { applyCaptureEvents, appendHeadHistory, chainPositions, clearDeadChains, type ChainMap } from "./chainTrail";
+import {
+  applyCaptureEvents,
+  appendHeadHistory,
+  chainPositions,
+  clearDeadChains,
+  CHAIN_TRAIL_ALPHA,
+  type ChainMap,
+} from "./chainTrail";
 import { cloneProfile, DEFAULT_BOT_PROFILE, type BotProfile } from "./botProfile";
 import { createBotMemory, DEFAULT_BOT_TYPE, type BotType } from "./botStrategy";
 import { BotProfilePanel } from "./BotProfilePanel";
@@ -263,13 +270,27 @@ class LandGrabScene extends Phaser.Scene {
     const cell = this.cellSize;
     const worldWidth = state.colCount * cell;
     const worldHeight = state.rowCount * cell;
-    this.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
 
     const aspect = worldWidth / worldHeight;
     const mmWidth = aspect >= 1 ? MINIMAP_MAX_SIZE : Math.round(MINIMAP_MAX_SIZE * aspect);
     const mmHeight = aspect >= 1 ? Math.round(MINIMAP_MAX_SIZE / aspect) : MINIMAP_MAX_SIZE;
     const x = MINIMAP_MARGIN;
     const y = this.scale.height - mmHeight - MINIMAP_MARGIN;
+
+    // Pad the camera's scroll bounds out past the true world edge, on every side, by more
+    // than the minimap's footprint. Phaser clamps the main camera to stay within its bounds,
+    // so without this a player hugging (say) the bottom-left corner gets pinned flush against
+    // the viewport's bottom-left corner too — exactly where the minimap overlay sits, hiding
+    // them under it. The padded strip beyond the edge draws nothing (same background color as
+    // the board, so it reads as more board, not a visible seam), which is what lets the camera
+    // keep backing off and giving the player breathing room as they approach any edge.
+    const edgePadding = Math.max(mmWidth, mmHeight) + MINIMAP_MARGIN * 2;
+    this.cameras.main.setBounds(
+      -edgePadding,
+      -edgePadding,
+      worldWidth + edgePadding * 2,
+      worldHeight + edgePadding * 2,
+    );
 
     this.minimapZoom = mmWidth / worldWidth;
     const minimap = this.cameras.add(x, y, mmWidth, mmHeight);
@@ -278,10 +299,31 @@ class LandGrabScene extends Phaser.Scene {
     minimap.setBackgroundColor(0x0f172a);
     this.minimapCamera = minimap;
 
-    const border = this.add.graphics().setScrollFactor(0);
-    border.lineStyle(2, 0x64748b, 0.9);
-    border.strokeRect(x + 1, y + 1, mmWidth - 2, mmHeight - 2);
-    minimap.ignore(border);
+    // Outlines the world edge, in world space, so it sits right at the minimap's frame —
+    // it also reads as the minimap panel's own border, since the minimap is zoomed to fit
+    // the world exactly. Drawn only by the minimap camera: the minimap is added after the
+    // main camera, so it renders on top and a screen-space border under it (main camera,
+    // scroll-factor 0) would just get painted over by the minimap's own background fill.
+    const minimapBorderWidth = 2 / this.minimapZoom;
+    const minimapInset = minimapBorderWidth / 2;
+    const minimapBorder = this.add.graphics();
+    minimapBorder.lineStyle(minimapBorderWidth, 0x64748b, 0.9);
+    minimapBorder.strokeRect(
+      minimapInset,
+      minimapInset,
+      worldWidth - minimapInset * 2,
+      worldHeight - minimapInset * 2,
+    );
+    this.cameras.main.ignore(minimapBorder);
+
+    // Same outline again in the main view — the camera bounds are padded past the true edge
+    // (see `edgePadding` above) so a player near the edge can see blank space beyond it, and
+    // without a line marking the actual boundary that blank strip just reads as more board.
+    // Drawn only by the main camera; the minimap already has its own copy above.
+    const fieldBorder = this.add.graphics();
+    fieldBorder.lineStyle(2, 0x64748b, 0.9);
+    fieldBorder.strokeRect(1, 1, worldWidth - 2, worldHeight - 2);
+    minimap.ignore(fieldBorder);
 
     const human = state.players[HUMAN_ID];
     const startX = human ? human.head.col * cell + cell / 2 : worldWidth / 2;
@@ -391,8 +433,8 @@ class LandGrabScene extends Phaser.Scene {
         const cx = pos.col * cell + cell / 2;
         const cy = pos.row * cell + cell / 2;
         const capturedColor = state.players[chain[i]]?.color ?? player.color;
-        const marker = this.add.circle(cx, cy, cell * 0.22, capturedColor, 0.85);
-        marker.setStrokeStyle(1.5, 0xffffff, 0.6);
+        const marker = this.add.circle(cx, cy, cell * 0.22, capturedColor, CHAIN_TRAIL_ALPHA);
+        marker.setStrokeStyle(1.5, 0xffffff, CHAIN_TRAIL_ALPHA);
         this.chainMarkers.push(marker);
       }
     }
@@ -742,7 +784,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
         <div className="flex flex-col gap-4 min-w-0">
           <div
             ref={containerRef}
-            className="rounded-lg overflow-hidden border border-border w-full touch-none [&>canvas]:block [&>canvas]:h-auto [&>canvas]:max-w-full"
+            className="overflow-hidden border border-border w-full touch-none [&>canvas]:block [&>canvas]:h-auto [&>canvas]:max-w-full"
             style={{ maxWidth: (viewport?.cols ?? dims.cols) * dims.cell }}
             onPointerDown={handleBoardPointerDown}
             onPointerMove={handleBoardPointerMove}

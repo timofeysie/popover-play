@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { frameChainsAt, frameGridAt, frameHeadHistoryAt, type ReplayLog } from "./replayLog";
-import { chainPositions } from "./chainTrail";
+import { chainPositions, CHAIN_TRAIL_ALPHA } from "./chainTrail";
 import { TICK_MS } from "./simulation";
 
 export const SPEED_OPTIONS = [0.5, 1, 2, 4];
@@ -151,10 +151,10 @@ function drawFrame(canvas: HTMLCanvasElement, log: ReplayLog, index: number, cel
       const cy = (pos.row - crop.row) * cell + cell / 2;
       ctx.beginPath();
       ctx.arc(cx, cy, cell * 0.22, 0, Math.PI * 2);
-      ctx.fillStyle = rgba(capturedColor, 0.85);
+      ctx.fillStyle = rgba(capturedColor, CHAIN_TRAIL_ALPHA);
       ctx.fill();
       ctx.lineWidth = 1.5;
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+      ctx.strokeStyle = rgba(0xffffff, CHAIN_TRAIL_ALPHA);
       ctx.stroke();
     }
   }
