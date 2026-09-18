@@ -47,7 +47,7 @@ describe("buildGameRecord", () => {
   it("captures the winner, board, and timing", () => {
     const record = buildGameRecord(decidedState(), { endedAt: new Date("2026-09-10T12:00:00.000Z") });
 
-    expect(record.schemaVersion).toBe(3);
+    expect(record.schemaVersion).toBe(4);
     expect(record.endedAt).toBe("2026-09-10T12:00:00.000Z");
     expect(record.ticks).toBe(437);
     expect(record.durationMs).toBe(437 * 160); // TICK_MS
@@ -65,6 +65,21 @@ describe("buildGameRecord", () => {
     expect(record.winner.peakOwnedCount).toBe(120);
     expect(record.winner.peakOwnedFraction).toBeCloseTo(1);
     expect(record.winner.profile).toEqual(DEFAULT_BOT_PROFILE);
+  });
+
+  it("scores each player as owned cells plus a board-share bonus per current chain length", () => {
+    const record = buildGameRecord(decidedState(), { chainLengths: { "bot-red": 3, you: 1 } });
+    // 2 players, 120 total cells -> each chain link is worth 120 / 2 = 60.
+    expect(record.winner.score).toBe(120 + 3 * 60); // 300
+    expect(record.players.find((p) => p.id === "you")?.score).toBe(0 + 1 * 60); // 60
+  });
+
+  it("scores from chain length, not the lifetime captures counter, when no chainLengths snapshot is given", () => {
+    const record = buildGameRecord(decidedState());
+    // bot-red's lifetime captures is 3, but with no chainLengths given its current chain is 0.
+    expect(record.winner.captures).toBe(3);
+    expect(record.winner.score).toBe(120);
+    expect(record.players.find((p) => p.id === "you")?.score).toBe(0);
   });
 
   it("lists every player in playerOrder", () => {

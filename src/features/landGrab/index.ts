@@ -85,3 +85,4 @@ export { resolveCapture, createEmptyGrid, countOwnedCells } from "./grid";
 export type { CellState } from "./grid";
 export { resolveTerritorySplit } from "./splitResolution";
 export type { Direction, Vec2 } from "./types";
+export { computeTotalScore, captureValue } from "./score";

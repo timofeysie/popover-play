@@ -60,6 +60,7 @@ function RecordsTable({ records }: { records: LandGrabGameRecord[] }) {
           <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
             <th className="py-2 pr-4 font-medium">When</th>
             <th className="py-2 pr-4 font-medium">Winner</th>
+            <th className="py-2 pr-4 font-medium text-right">Score</th>
             <th className="py-2 pr-4 font-medium text-right">Cells</th>
             <th className="py-2 pr-4 font-medium text-right">Captures</th>
             <th className="py-2 pr-4 font-medium text-right">Ticks</th>
@@ -84,6 +85,9 @@ function RecordsTable({ records }: { records: LandGrabGameRecord[] }) {
                     />
                     <span className="text-foreground font-medium">{record.winner.label}</span>
                   </span>
+                </td>
+                <td className="py-2 pr-4 text-right tabular-nums text-foreground font-medium">
+                  {record.winner.score.toLocaleString()}
                 </td>
                 <td className="py-2 pr-4 text-right tabular-nums text-foreground">
                   {record.winner.ownedCount} ({Math.round(record.winner.ownedFraction * 100)}%)

@@ -24,6 +24,7 @@ import { createBotMemory, DEFAULT_BOT_TYPE, type BotType } from "./botStrategy";
 import { BotProfilePanel } from "./BotProfilePanel";
 import { MatchRecordsPanel } from "./MatchRecordsPanel";
 import { buildGameRecord, saveGameRecord, type LandGrabGameRecord } from "./gameRecord";
+import { computeTotalScore } from "./score";
 import { createReplayLog, recordFrame, type ReplayLog } from "./replayLog";
 import { LandGrabReplay, SPEED_OPTIONS as REPLAY_SPEED_OPTIONS } from "./LandGrabReplay";
 import { loadUserProfile, resolveUsername, saveUserProfile } from "./userProfile";
@@ -155,8 +156,14 @@ interface SceneData {
   rulesRef: { current: GameRules };
   /** The human's custom head-marker sprite, or `null` to draw the plain color circle. */
   avatarRef: { current: AvatarGrid | null };
-  /** `chainPeaks` is each player's high-water mark for the display-only captured-avatar chain so far this match. */
-  onTick: (state: GameState, chainPeaks: Record<string, number>) => void;
+  /**
+   * `chainPeaks` is each player's high-water mark for the display-only captured-avatar
+   * chain so far this match; `chainLengths` is that same chain's *current* length —
+   * how many previously-captured rivals are trailing this player right now. It resets
+   * to `0` the instant this player is themself captured (`chainTrail.ts`), unlike the
+   * lifetime `captures` counter, which is what makes it the right input for scoring.
+   */
+  onTick: (state: GameState, chainPeaks: Record<string, number>, chainLengths: Record<string, number>) => void;
   cellSize: number;
   /** "Large map" mode: the board is bigger than the canvas, so the camera follows the human and a minimap is drawn. */
   isLargeMap: boolean;
@@ -259,7 +266,10 @@ class LandGrabScene extends Phaser.Scene {
 
         this.gameStateRef.current = stepGame(state);
         this.draw();
-        this.onTick(this.gameStateRef.current, this.chainPeaks);
+        const chainLengths = Object.fromEntries(
+          Object.keys(this.gameStateRef.current.players).map((id) => [id, this.chains[id]?.length ?? 0]),
+        );
+        this.onTick(this.gameStateRef.current, this.chainPeaks, chainLengths);
       },
     });
   }
@@ -541,6 +551,10 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
     current: createInitialGameState(DEFAULT_DIMS.rows, DEFAULT_DIMS.cols, buildConfigs(), rulesRef.current),
   });
   const [players, setPlayers] = useState<Record<string, PlayerState>>(stateHolderRef.current.current.players);
+  // Each player's *current* chain length — previously-captured rivals trailing them right
+  // now (`chainTrail.ts`) — keyed by player id. Resets to 0 the instant that player is
+  // themself captured, unlike `player.captures`; this is what scoring is based on.
+  const [chainLengths, setChainLengths] = useState<Record<string, number>>({});
   const [tick, setTick] = useState(0);
   const [restartToken, setRestartToken] = useState(0);
   const [gameOver, setGameOver] = useState<LandGrabGameRecord | null>(null);
@@ -597,7 +611,13 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
     setIntroReplayIndex(null);
   };
 
-  const leaderboard = Object.values(players).sort((a, b) => b.ownedCount - a.ownedCount);
+  // Fixed for the whole match — players don't leave the roster on death, only `alive` flips.
+  const totalCells = dims.rows * dims.cols;
+  const playerCount = Object.keys(players).length;
+  const scoreFor = (player: Pick<PlayerState, "id" | "ownedCount">) =>
+    computeTotalScore(player.ownedCount, chainLengths[player.id] ?? 0, totalCells, playerCount);
+  const leaderboard = Object.values(players).sort((a, b) => scoreFor(b) - scoreFor(a));
+  const humanScore = players[HUMAN_ID] ? scoreFor(players[HUMAN_ID]) : 0;
 
   useEffect(() => {
     controlRef.current.paused = paused;
@@ -695,6 +715,7 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
 
     stateHolderRef.current.current = createInitialGameState(dims.rows, dims.cols, buildConfigs(), rulesRef.current);
     setPlayers(stateHolderRef.current.current.players);
+    setChainLengths({});
     setTick(0);
     setGameOver(null);
     setShowReplay(false);
@@ -731,13 +752,14 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
         avatarRef,
         cellSize: dims.cell,
         isLargeMap: boardMode === "large",
-        onTick: (state: GameState, chainPeaks: Record<string, number>) => {
+        onTick: (state: GameState, chainPeaks: Record<string, number>, chainLengths: Record<string, number>) => {
           if (replayLogRef.current) recordFrame(replayLogRef.current, state);
           setPlayers({ ...state.players });
+          setChainLengths(chainLengths);
           setTick(state.tick);
           if (!hideControlsRef.current && state.winnerId && !recordedRef.current) {
             recordedRef.current = true;
-            const record = buildGameRecord(state, { chainPeaks });
+            const record = buildGameRecord(state, { chainPeaks, chainLengths });
             saveGameRecord(record);
             const log = replayLogRef.current;
             setReplay(log);
@@ -782,15 +804,21 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
     >
       <div className="flex flex-col min-[1400px]:flex-row min-[1400px]:items-start gap-4">
         <div className="flex flex-col gap-4 min-w-0">
-          <div
-            ref={containerRef}
-            className="overflow-hidden border border-border w-full touch-none [&>canvas]:block [&>canvas]:h-auto [&>canvas]:max-w-full"
-            style={{ maxWidth: (viewport?.cols ?? dims.cols) * dims.cell }}
-            onPointerDown={handleBoardPointerDown}
-            onPointerMove={handleBoardPointerMove}
-            onPointerUp={handleBoardPointerEnd}
-            onPointerCancel={handleBoardPointerEnd}
-          />
+          <div className="relative" style={{ maxWidth: (viewport?.cols ?? dims.cols) * dims.cell }}>
+            <div
+              ref={containerRef}
+              className="overflow-hidden border border-border w-full touch-none [&>canvas]:block [&>canvas]:h-auto [&>canvas]:max-w-full"
+              onPointerDown={handleBoardPointerDown}
+              onPointerMove={handleBoardPointerMove}
+              onPointerUp={handleBoardPointerEnd}
+              onPointerCancel={handleBoardPointerEnd}
+            />
+            {!hideControls && (
+              <div className="absolute top-2 left-2 z-10 pointer-events-none rounded-md bg-background/80 backdrop-blur px-2 py-1 text-xs font-semibold text-foreground shadow-sm">
+                Score {humanScore.toLocaleString()}
+              </div>
+            )}
+          </div>
           {!hideControls && (
             <div className="flex flex-wrap items-center gap-3">
               <button
@@ -857,7 +885,9 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
                   <li key={player.id} className="flex items-center gap-2">
                     <span className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: colorToHex(player.color) }} />
                     <span className="text-foreground font-medium">{displayLabel(player)}</span>
-                    <span className="text-muted-foreground">{player.ownedCount} cells</span>
+                    <span className="text-muted-foreground">
+                      {player.ownedCount} cells · {chainLengths[player.id] ?? 0}
+                    </span>
                     {!player.alive && <span className="text-destructive text-xs">trying to respawn…</span>}
                   </li>
                 ))}
@@ -907,7 +937,10 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
                   <span className="text-muted-foreground tabular-nums w-4">{index + 1}</span>
                   <span className="w-3 h-3 rounded-full inline-block shrink-0" style={{ backgroundColor: colorToHex(player.color) }} />
                   <span className="text-foreground font-medium truncate">{displayLabel(player)}</span>
-                  <span className="text-muted-foreground tabular-nums ml-auto">{player.ownedCount}</span>
+                  <span className="ml-auto flex items-baseline gap-1.5" title="Cells owned · players currently captured">
+                    <span className="text-foreground tabular-nums">{player.ownedCount}</span>
+                    <span className="text-muted-foreground text-xs tabular-nums">{chainLengths[player.id] ?? 0}</span>
+                  </span>
                 </li>
               ))}
             </ol>
@@ -996,6 +1029,8 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
                     <dd className="tabular-nums text-foreground">
                       {gameOver.board.cols}×{gameOver.board.rows} · {gameOver.board.totalCells} cells
                     </dd>
+                    <dt>Winner score</dt>
+                    <dd className="tabular-nums text-foreground">{gameOver.winner.score.toLocaleString()}</dd>
                     <dt>Winner cells</dt>
                     <dd className="tabular-nums text-foreground">
                       {gameOver.winner.ownedCount} ({Math.round(gameOver.winner.ownedFraction * 100)}%)

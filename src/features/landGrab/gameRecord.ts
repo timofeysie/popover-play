@@ -1,5 +1,6 @@
 import { TICK_MS, type GameRules, type GameState } from "./simulation";
 import type { BotProfile } from "./botProfile";
+import { computeTotalScore } from "./score";
 
 /**
  * A finished match, frozen into a plain JSON-serialisable object. There's no
@@ -9,7 +10,7 @@ import type { BotProfile } from "./botProfile";
  */
 export interface LandGrabGameRecord {
   /** Bump if the shape below changes so old rows can be filtered out on read. */
-  schemaVersion: 3;
+  schemaVersion: 4;
   /** ISO-8601, when the match was recorded. */
   endedAt: string;
   winner: LandGrabPlayerRecord;
@@ -41,6 +42,16 @@ export interface LandGrabPlayerRecord {
   /** Times a rival cut this player's trail and sank them — counted win or lose. */
   timesCaptured: number;
   /**
+   * `ownedCount` cells plus a weighted bonus per rival *currently* trailing
+   * this player in their captured-avatar chain (`chainTrail.ts`) — see
+   * {@link computeTotalScore}. Deliberately based on that chain length, not
+   * the lifetime `captures` counter above: it resets to `0` the instant this
+   * player is themself captured, so score rewards an active capture streak,
+   * not a running lifetime tally. `0` if the match ended before
+   * `buildGameRecord` was given a chain-lengths snapshot.
+   */
+  score: number;
+  /**
    * Most captured avatars this player had trailing them at once — their
    * high-water mark on the display-only chain (`chainTrail.ts`). Resets to 0
    * on death, so this is a streak record, not a running total; `0` if the
@@ -62,7 +73,9 @@ function hexColor(color: number): string {
 function toPlayerRecord(
   player: GameState["players"][string],
   totalCells: number,
+  playerCount: number,
   peakChainLength: number,
+  chainLength: number,
 ): LandGrabPlayerRecord {
   return {
     id: player.id,
@@ -76,6 +89,7 @@ function toPlayerRecord(
     peakOwnedFraction: totalCells > 0 ? player.peakOwnedCount / totalCells : 0,
     captures: player.captures,
     timesCaptured: player.timesCaptured,
+    score: computeTotalScore(player.ownedCount, chainLength, totalCells, playerCount),
     peakChainLength,
     alive: player.alive,
     profile: { ...player.profile },
@@ -91,6 +105,14 @@ export interface BuildGameRecordOptions {
    * or omitted entries record as `0`.
    */
   chainPeaks?: Record<string, number>;
+  /**
+   * Each player's chain length at the moment the match ended — rivals
+   * currently trailing them (`chainTrail.ts`), keyed by player id. Unlike
+   * `chainPeaks`, this resets to `0` the instant a player is themself
+   * captured, which is exactly what `score` is meant to weight. Missing or
+   * omitted entries record as `0`.
+   */
+  chainLengths?: Record<string, number>;
 }
 
 /**
@@ -98,20 +120,29 @@ export interface BuildGameRecordOptions {
  * Throws if the match isn't actually over, so callers can't record a draw.
  */
 export function buildGameRecord(state: GameState, options: BuildGameRecordOptions = {}): LandGrabGameRecord {
-  const { endedAt = new Date(), chainPeaks = {} } = options;
+  const { endedAt = new Date(), chainPeaks = {}, chainLengths = {} } = options;
   const winner = state.winnerId ? state.players[state.winnerId] : undefined;
   if (!winner) throw new Error("buildGameRecord: game state has no winner yet");
 
   const totalCells = state.rowCount * state.colCount;
+  const playerCount = state.playerOrder.length;
   const players = state.playerOrder
     .map((id) => state.players[id])
     .filter(Boolean)
-    .map((player) => toPlayerRecord(player, totalCells, chainPeaks[player.id] ?? 0));
+    .map((player) =>
+      toPlayerRecord(player, totalCells, playerCount, chainPeaks[player.id] ?? 0, chainLengths[player.id] ?? 0),
+    );
 
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     endedAt: endedAt.toISOString(),
-    winner: toPlayerRecord(winner, totalCells, chainPeaks[winner.id] ?? 0),
+    winner: toPlayerRecord(
+      winner,
+      totalCells,
+      playerCount,
+      chainPeaks[winner.id] ?? 0,
+      chainLengths[winner.id] ?? 0,
+    ),
     players,
     ticks: state.tick,
     durationMs: state.tick * TICK_MS,
@@ -127,7 +158,7 @@ export function loadGameRecords(): LandGrabGameRecord[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((row): row is LandGrabGameRecord => row?.schemaVersion === 3);
+    return parsed.filter((row): row is LandGrabGameRecord => row?.schemaVersion === 4);
   } catch {
     return [];
   }
