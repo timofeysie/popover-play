@@ -33,6 +33,7 @@ import AppVersionNote from "./pages/AppVersionNote";
 import WorkingWithMarkdownNote from "./pages/WorkingWithMarkdownNote";
 import ContextManagementNote from "./pages/ContextManagementNote";
 import AbortControllerNote from "./pages/AbortControllerNote";
+import FloodFillDeepDiveNote from "./pages/FloodFillDeepDiveNote";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -84,6 +85,7 @@ const App = () => (
             <Route path="notes/working-with-markdown" element={<WorkingWithMarkdownNote />} />
             <Route path="notes/context-management" element={<ContextManagementNote />} />
             <Route path="notes/abort-controller" element={<AbortControllerNote />} />
+            <Route path="notes/flood-fill-deep-dive" element={<FloodFillDeepDiveNote />} />
           </Route>
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

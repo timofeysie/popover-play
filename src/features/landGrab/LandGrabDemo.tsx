@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Star } from "lucide-react";
 import Phaser from "phaser";
 import {
   createInitialGameState,
@@ -814,8 +815,12 @@ export function LandGrabDemo({ hideControls }: LandGrabDemoProps) {
               onPointerCancel={handleBoardPointerEnd}
             />
             {!hideControls && (
-              <div className="absolute top-2 left-2 z-10 pointer-events-none rounded-md bg-background/80 backdrop-blur px-2 py-1 text-xs font-semibold text-foreground shadow-sm">
-                Score {humanScore.toLocaleString()}
+              <div
+                className="absolute top-2 left-2 z-10 pointer-events-none flex items-center gap-1 rounded-md bg-background/80 backdrop-blur px-2 py-1 text-xs font-semibold text-foreground shadow-sm"
+                title="Score"
+              >
+                <Star className="w-3.5 h-3.5 fill-current" aria-hidden />
+                {humanScore.toLocaleString()}
               </div>
             )}
           </div>

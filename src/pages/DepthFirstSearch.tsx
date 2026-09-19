@@ -329,6 +329,15 @@ const DepthFirstSearch = () => {
                 Right is pushed before left so that left is processed first (stack is LIFO). Same visit order as the recursive pre-order.
               </p>
             </div>
+            <p className="text-sm text-muted-foreground">
+              Want to see the iterative, explicit-stack version doing real work on a much bigger grid?{" "}
+              <Link to="/notes/flood-fill-deep-dive" className="text-primary hover:underline font-medium">
+                Flood Fill In Depth
+              </Link>{" "}
+              walks through <code className="text-code-keyword">resolveCapture</code> and{" "}
+              <code className="text-code-keyword">resolveTerritorySplit</code> from Land Grab line by line, including
+              why they can't be recursive and a detailed time/space complexity breakdown.
+            </p>
           </div>
         </details>
       </section>

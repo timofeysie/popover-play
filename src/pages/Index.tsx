@@ -12,6 +12,7 @@ const notes = [
   { title: "Working with Markdown", path: "/notes/working-with-markdown", active: true },
   { title: "Context Management", path: "/notes/context-management", active: true },
   { title: "AbortController", path: "/notes/abort-controller", active: true },
+  { title: "Flood Fill Deep Dive", path: "/notes/flood-fill-deep-dive", active: true },
 ];
 
 const exercises = [
